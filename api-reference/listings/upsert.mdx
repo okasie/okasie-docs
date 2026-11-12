@@ -24,7 +24,7 @@ These rules apply to every field below.
 - **Unknown fields are ignored.** A field that is not listed on this page is dropped without an error.
 - **Numbers** may be sent as a JSON number or as a numeric string (`19995`, `"19995"`, `"19995.50"`). Use a dot as decimal separator and no thousands separator. Whole-number fields (marked *integer*) refuse decimals with `422`.
 - **0 means "not known"** for `mileage`, `powerKw`, `co2Emission`, `fuelConsumption`, `weight`, `previousOwners` and `warrantyMonths`: Okasie stores it as empty.
-- **Booleans** (`serviceHistory`, `warranty`) must be JSON `true` or `false`. The string `"true"` is refused with `422`.
+- **Booleans** (`serviceHistory`, `warranty`, `isLightCommercial`) must be JSON `true` or `false`. The string `"true"` is refused with `422`.
 - **`null`**: only the fields marked *nullable* accept `null`. For any other text field `null` is refused with `422`; for `year`, `doors` and `seats` it is refused as well. When you have no value, leave the field out.
 - **Text** is trimmed. A text that is empty after trimming is stored as empty.
 - Errors are described on [Error Handling](/errors); the codes this endpoint can return are listed [below](#errors).
@@ -233,6 +233,10 @@ Send one of the two. When both are sent, `dealerProfileId` is used.
   *Nullable.* `true` when the car is sold with warranty. Leave it out when unknown: `null` is stored as `false`.
 </ParamField>
 
+<ParamField body="isLightCommercial" type="boolean">
+  *Nullable.* `true` for a light commercial vehicle (lichte vracht / utilitaire léger), `false` for a passenger car. Shown on the listing as "Lichte bestelwagen: Ja/Nee". Leave it out or send `null` when unknown; the listing then does not show the line.
+</ParamField>
+
 <ParamField body="warrantyMonths" type="integer">
   *Nullable.* Warranty duration in months, `0` or more.
 </ParamField>
@@ -374,6 +378,7 @@ curl -X PUT "https://www.okasie.be/api/external/v1/listings/DV-123456" \
     "fuelConsumption": 5.7,
     "previousOwners": 1,
     "serviceHistory": true,
+    "isLightCommercial": false,
     "warranty": true,
     "warrantyMonths": 12,
     "vehicleType": "margin",
