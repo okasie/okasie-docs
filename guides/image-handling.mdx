@@ -1,0 +1,90 @@
+---
+title: Image Handling
+description: "How Okasie downloads, stores and replaces your photos"
+---
+
+You send photo URLs; Okasie downloads each photo during the request, stores its own copy and shows that copy on the site. Your URLs only need to work while Okasie downloads them.
+
+## Sending photos
+
+Send `images` in [Create/Update Listing](/api-reference/listings/upsert) or in a [bulk](/api-reference/listings/bulk-upsert) item, as URL strings, objects, or a mix:
+
+```json
+{
+  "images": [
+    "https://images.example.com/dv/123456/1.jpg",
+    {"url": "https://images.example.com/dv/123456/2.jpg", "position": 1},
+    {"imageUrl": "https://images.example.com/dv/123456/3.jpg", "position": 2}
+  ]
+}
+```
+
+- **Order**: photos are shown by `position`, lowest first; the lowest is the main photo used in search results. Without `position`, the index in the array is used.
+- **Maximum**: 50 photos. Empty entries are dropped first; entries after the 50th are ignored without a warning.
+- **URL**: max 2048 characters.
+
+## Replacing photos
+
+| You send | Result |
+|----------|--------|
+| no `images` field | The current photos stay |
+| `"images": []` | All photos are removed |
+| `"images": [...]` | The list replaces the current photos completely: photos you leave out are removed, new ones are added, the order follows `position` |
+
+To add one photo, send the full list including the existing ones. URLs returned by the read endpoints (Okasie's own copies) are accepted as well and are kept without a new download.
+
+## Download rules
+
+| Rule | Value |
+|------|-------|
+| Protocol | HTTPS only. `http://` URLs are skipped |
+| Host | A public host name; no IP addresses of private networks, no `localhost`, no user name or password in the URL. Redirects are followed and checked the same way |
+| Response | HTTP 200 with a `Content-Type` that starts with `image/` (for example JPEG, PNG, WebP) |
+| Size | Max 25 MB per photo |
+| Time | 10 seconds per attempt, up to 3 attempts |
+| Processing | Large photos are scaled down to fit 1920 x 1280 pixels and compressed |
+
+Photos are downloaded one after another while the request runs, and on every PUT that contains `images` each URL is downloaded again. A car with many photos can take tens of seconds; give your HTTP client a generous timeout.
+
+## Skipped photos
+
+A photo that cannot be downloaded does not stop the listing. It is left out, and the response reports it:
+
+```json
+{
+  "data": {
+    "listingId": "0c52cae7-bcaa-4b37-be0d-1b78c92c5225",
+    "externalReference": "DV-123456",
+    "status": "active",
+    "listingUrl": "https://www.okasie.be/aanbod/volkswagen-golf-1-5-tsi-life--0c52cae7-bcaa-4b37-be0d-1b78c92c5225",
+    "created": false,
+    "warnings": {
+      "skippedImages": [
+        {"source": "http://images.example.com/dv/123456/4.jpg", "reason": "Afbeeldings-URL is niet toegestaan"},
+        {"source": "https://images.example.com/dv/123456/5.jpg", "reason": "Afbeelding ophalen mislukt (404)"}
+      ]
+    }
+  }
+}
+```
+
+`reason` is one of:
+
+| Reason | Meaning |
+|--------|---------|
+| `invalid-url` | Not an `http` or `https` URL |
+| `Afbeeldings-URL is niet toegestaan` | URL not allowed (for example `http://`, a private address, credentials in the URL) |
+| `Afbeelding ophalen mislukt (<status>)` | The server answered with this HTTP status |
+| `Afbeelding ophalen verlopen` | Timed out |
+| `Afbeelding is groter dan toegestaan` | Larger than 25 MB |
+| `Bestand is geen geldige afbeelding` | `Content-Type` is not an image |
+| `Afbeelding is leeg` | Empty response |
+| `Afbeelding kon niet veilig worden opgehaald of opgeslagen` or `mirror_failed` | Other download or storage failure |
+
+Treat `reason` as text for people; the wording can change. A skipped photo is not stored, and when the listing had it before, it is removed. Send the listing again once the photo is available.
+
+## Good practice
+
+- Use stable HTTPS URLs that stay reachable for at least a few minutes after the call; avoid short-lived signed URLs.
+- Use a new URL when a photo changes.
+- Send photos of a reasonable size (a few MB at most) to keep requests fast.

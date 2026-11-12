@@ -1,0 +1,114 @@
+---
+title: Authentication
+description: "API keys, scopes and which dealers a key can reach"
+---
+
+Every request carries your API secret. Okasie issues the secret; contact [info@okasie.be](mailto:info@okasie.be) to get one.
+
+## Sending the secret
+
+Use one of these two headers:
+
+```http
+Authorization: Bearer YOUR_API_SECRET
+```
+
+```http
+X-API-Key: YOUR_API_SECRET
+```
+
+Write `Bearer` exactly like this, followed by one space. When a request carries both headers, `X-API-Key` is used. Always call the API over HTTPS.
+
+<CodeGroup>
+```bash cURL
+curl "https://www.okasie.be/api/external/v1/locations" \
+  -H "Authorization: Bearer YOUR_API_SECRET"
+```
+
+```javascript Node.js
+const response = await fetch("https://www.okasie.be/api/external/v1/locations", {
+  headers: { Authorization: `Bearer ${process.env.PARTNER_SECRET}` },
+});
+```
+
+```python Python
+import os
+import requests
+
+response = requests.get(
+    "https://www.okasie.be/api/external/v1/locations",
+    headers={"Authorization": f"Bearer {os.getenv('PARTNER_SECRET')}"},
+)
+```
+</CodeGroup>
+
+A missing or unknown secret gives `401`. On the write endpoints the body is `{"error": {"code": "UNAUTHORIZED", "message": "Invalid or missing API key"}}`; on the read endpoints it is `{"error": "Unauthorized"}`.
+
+## Scopes
+
+| Scope | Gives access to |
+|-------|-----------------|
+| `read:listings` | Granted by default |
+| `read:locations` | Granted by default |
+| `write:listings` | `PUT` and `DELETE /listings/{externalReference}`, `POST /listings/{externalReference}/status`, `POST /listings/bulk-upsert` |
+
+The read endpoints (`GET /listings`, `GET /locations`, `GET /locations/{id}/listings`) accept every valid key. A write call with a key that lacks `write:listings` is refused with `401 UNAUTHORIZED` (not `403`). Ask Okasie for write access.
+
+## Dealer access
+
+A key does not reach every dealer on Okasie. Okasie links dealers to your key, and your key can read and write the listings of those dealers and of their child locations (branches registered under them). Writing for any other dealer gives `403 PROFILE_FORBIDDEN`.
+
+### Publishing a new dealer
+
+<Steps>
+  <Step title="The dealer asks to be published">
+    The dealer asks you to publish its stock on Okasie. The dealer needs an Okasie account with a plan.
+  </Step>
+  <Step title="You ask Okasie">
+    Send Okasie the dealer's name and its Okasie **Dealer ID**, for example `OK-00148`. The dealer finds its Dealer ID in the Okasie dashboard under **Integraties**.
+  </Step>
+  <Step title="Okasie links the dealer">
+    Once the dealer and Okasie agree, Okasie links the dealer to your key. The change is active within a minute. Check it with [List Locations](/api-reference/locations/list).
+  </Step>
+  <Step title="You send the cars">
+    Send each car with `dealerLocationCode: "OK-00148"` (or the dealer's UUID in `dealerProfileId`).
+  </Step>
+</Steps>
+
+To stop, delete the dealer's listings first and then ask Okasie to remove the link. Once the link is removed, your key can no longer change those listings.
+
+### Keys for approved dealers only
+
+Some keys are set up to serve only the dealers Okasie approved. Such a key:
+
+- reaches exactly the dealers Okasie linked to it (and their child locations),
+- reaches **no dealer at all** while nothing is linked yet: reads return empty lists and writes return `403 PROFILE_FORBIDDEN`,
+- cannot link dealers itself.
+
+Other keys are either linked to dealers in the same way, or, by exception, have no dealer restriction.
+
+### Seeing your access
+
+The read endpoints return your access in `meta.partner.access`:
+
+```json
+{
+  "scope": "restricted",
+  "rootProfileIds": ["7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f"],
+  "profileIds": ["7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f", "8a8a8a8a-8a8a-48a8-a8a8-8a8a8a8a8a8a"]
+}
+```
+
+`rootProfileIds` are the dealers linked to your key, `profileIds` those dealers plus their child locations. A key without dealer restriction shows `"scope": "global"` and `"profileIds": null`.
+
+## Request IDs
+
+You may send `X-Request-Id` (or `X-Correlation-Id`) with each request. Okasie stores it with the log of every write call, so mention it, together with the `externalReference` and the time, when you contact support. Responses do not return a request ID.
+
+## Keeping the secret safe
+
+<Warning>
+  Never put the secret in client-side code, a public repository or a URL. Keep it in an environment variable or a secrets manager.
+</Warning>
+
+To replace a secret, contact [info@okasie.be](mailto:info@okasie.be).

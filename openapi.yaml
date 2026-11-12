@@ -1,0 +1,1344 @@
+openapi: 3.0.3
+info:
+  title: Okasie Partner API
+  description: |
+    The Okasie Partner API lets stock systems publish the cars of the dealers they serve on
+    okasie.be, and read back those listings and dealers.
+
+    ## Base URL
+    ```
+    https://www.okasie.be/api/external/v1
+    ```
+
+    ## Authentication
+    Send the secret as `Authorization: Bearer <secret>` or `X-API-Key: <secret>` (when both are
+    sent, `X-API-Key` is used). Read endpoints accept any valid key; write endpoints need the
+    scope `write:listings` and return `401 UNAUTHORIZED` without it. A key only reaches the
+    dealers Okasie linked to it (and their child locations).
+
+    ## Rate limiting
+    120 requests per minute per key, fixed window per clock minute, one counter for reads and
+    writes. A bulk request counts as one. `/locations` endpoints are not counted.
+
+    ## Errors
+    Write endpoints: `{"error": {"code", "message", ...}}`. Read endpoints: `{"error": "<message>"}`.
+    Success is always HTTP 200, also when a listing is created.
+  version: "1.0.0"
+  contact:
+    name: Okasie Support
+    email: info@okasie.be
+    url: https://www.okasie.be
+
+servers:
+  - url: https://www.okasie.be/api/external/v1
+    description: Production
+
+security:
+  - bearerAuth: []
+  - apiKeyHeader: []
+
+tags:
+  - name: Listings
+    description: Vehicle listings
+  - name: Brands
+    description: The makes and models Okasie knows, to map a dealer's make and model to
+  - name: Locations
+    description: Dealers and dealer locations reachable by the key
+
+paths:
+  /listings:
+    get:
+      operationId: listListings
+      summary: List listings
+      description: |
+        Listings of the dealers the key can reach, sorted by `updatedAt` (newest first). Includes
+        listings those dealers created in other ways; your own have your `externalReference`.
+        Invalid query values fall back to their default or are ignored.
+      tags: [Listings]
+      parameters:
+        - name: page
+          in: query
+          description: Page number, starting at 1. Alias `page_number`.
+          schema: {type: integer, minimum: 1, default: 1}
+        - name: pageSize
+          in: query
+          description: Items per page; values above 200 become 200. Aliases `page_size`, `limit`.
+          schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+        - name: status
+          in: query
+          description: |
+            `all` for every status. Any other value (also `inactive`) falls back to `active`.
+            Deleted listings have status `inactive` and only appear with `all`.
+          schema:
+            type: string
+            enum: [active, pending, sold, draft, all]
+            default: active
+        - name: updatedSince
+          in: query
+          description: Only listings with `updatedAt` at or after this time. Alias `updated_since`.
+          schema: {type: string, format: date-time}
+          example: "2026-11-01T00:00:00Z"
+        - name: locationCode
+          in: query
+          description: Dealer ID, for example `OK-00148` (case-insensitive). Alias `location_code`.
+          schema: {type: string}
+          example: OK-00148
+        - name: dealerId
+          in: query
+          description: Dealer profile UUID. Aliases `locationId`, `profileId`, `userId`. Ignored when not a UUID.
+          schema: {type: string, format: uuid}
+        - name: parentDealerId
+          in: query
+          description: Dealer UUID; returns its listings and those of its child locations. Aliases `parentId`, `companyId`. Ignored when not a UUID.
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Listings
+          headers:
+            X-RateLimit-Limit: {$ref: "#/components/headers/X-RateLimit-Limit"}
+            X-RateLimit-Remaining: {$ref: "#/components/headers/X-RateLimit-Remaining"}
+            X-RateLimit-Reset: {$ref: "#/components/headers/X-RateLimit-Reset"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ListingsResponse"}
+        "401": {$ref: "#/components/responses/ReadUnauthorized"}
+        "429": {$ref: "#/components/responses/ReadRateLimited"}
+        "500": {$ref: "#/components/responses/ReadServerError"}
+
+  /listings/{externalReference}:
+    parameters:
+      - $ref: "#/components/parameters/ExternalReference"
+    put:
+      operationId: upsertListing
+      summary: Create or replace a listing
+      description: |
+        Creates the listing when the reference is new for your key, replaces it otherwise.
+        **Full replacement**: every omitted field is cleared, except `images` and `features`,
+        which are kept when omitted and removed with `[]`. Unknown fields are ignored.
+
+        Required: `title`; `dealerLocationCode` or `dealerProfileId`; `postalCode` and `city`
+        (top level or in `location`) for every status; `province` unless `postalCode` is a
+        4-digit Belgian code; `price` > 0 when `status` is `active` or `pending`.
+      tags: [Listings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ListingInput"}
+            examples:
+              minimal:
+                summary: Minimal active listing
+                value:
+                  dealerLocationCode: OK-00148
+                  status: active
+                  title: Volkswagen Golf 1.5 TSI Life
+                  price: 21950
+                  postalCode: "9000"
+                  city: Gent
+              full:
+                summary: Full listing
+                value:
+                  dealerLocationCode: OK-00148
+                  status: active
+                  title: Volkswagen Golf 1.5 TSI Life
+                  description: "First owner, full dealer maintenance.\nNew tyres in 2026."
+                  price: 21950
+                  currency: EUR
+                  brand: Volkswagen
+                  model: Golf
+                  variant: Life
+                  year: 2022
+                  firstRegistration: "2022-03-15"
+                  mileage: 38500
+                  fuelType: Benzine
+                  transmission: Automatic
+                  bodyType: Hatchback
+                  engine: "1.5"
+                  powerKw: 110
+                  driveType: FWD
+                  gears: 7
+                  doors: 5
+                  seats: 5
+                  weight: 1310
+                  color: Grijs
+                  paintType: Metallic
+                  interiorColor: Zwart
+                  interiorMaterial: Stof
+                  vin: WVWZZZCDZNW000000
+                  co2Emission: 129
+                  co2Type: WLTP
+                  emissionClass: Euro 6d
+                  fuelConsumption: 5.7
+                  previousOwners: 1
+                  serviceHistory: true
+                  warranty: true
+                  warrantyMonths: 12
+                  vehicleType: margin
+                  conditionTags: [Gebruikt]
+                  carPassUrl: https://public.car-pass.be/vhr/00000000-0000-0000-0000-000000000000
+                  postalCode: "9000"
+                  city: Gent
+                  latitude: 51.0543
+                  longitude: 3.7174
+                  features:
+                    - {category: comfort, name: Automatische airco}
+                    - {category: technology, name: Apple CarPlay}
+                  images:
+                    - {url: "https://images.example.com/dv/123456/1.jpg", position: 0}
+                    - {url: "https://images.example.com/dv/123456/2.jpg", position: 1}
+                    - "https://images.example.com/dv/123456/3.jpg"
+      responses:
+        "200":
+          description: Listing created (`created` true) or replaced (`created` false)
+          headers:
+            X-RateLimit-Limit: {$ref: "#/components/headers/X-RateLimit-Limit"}
+            X-RateLimit-Remaining: {$ref: "#/components/headers/X-RateLimit-Remaining"}
+            X-RateLimit-Reset: {$ref: "#/components/headers/X-RateLimit-Reset"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/UpsertResponse"}
+              example:
+                data:
+                  listingId: 0c52cae7-bcaa-4b37-be0d-1b78c92c5225
+                  externalReference: DV-123456
+                  status: active
+                  listingUrl: https://www.okasie.be/aanbod/volkswagen-golf-1-5-tsi-life--0c52cae7-bcaa-4b37-be0d-1b78c92c5225
+                  created: true
+        "400":
+          description: |
+            `INVALID_REFERENCE`, `INVALID_JSON`, `INVALID_BODY`, `INVALID_TITLE`, `INVALID_PRICE`,
+            `INVALID_PROFILE` or `INVALID_LOCATION`.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WriteError"}
+              example:
+                error: {code: INVALID_LOCATION, message: "province, city en postalCode zijn verplicht voor een listing"}
+        "401": {$ref: "#/components/responses/WriteUnauthorized"}
+        "403": {$ref: "#/components/responses/ProfileForbidden"}
+        "409":
+          description: |
+            `REFERENCE_OWNED_BY_OTHER_DEALER` (keys limited to approved dealers only), `LISTING_LIMIT_REACHED`
+            or `DEALER_PLAN_REQUIRED`.
+            Nothing was saved.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WriteError"}
+              example:
+                error:
+                  code: LISTING_LIMIT_REACHED
+                  message: The dealer has reached the number of active listings of its Okasie plan; this listing was not published.
+        "422": {$ref: "#/components/responses/ValidationFailed"}
+        "429": {$ref: "#/components/responses/WriteRateLimited"}
+        "500":
+          description: |
+            `FETCH_FAILED` or `UPSERT_FAILED` (nothing saved), or `FEATURES_FAILED` / `IMAGES_FAILED`
+            (listing saved, features or photos not). Safe to retry.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WriteError"}
+    delete:
+      operationId: deleteListing
+      summary: Take a listing offline
+      description: |
+        Soft delete for a sold or withdrawn car: sets status `sold` and the sold date. Okasie takes
+        the listing offline about an hour later (60 to 75 minutes); its status then reads `inactive`. Idempotent.
+        Publish it again with PUT and `status: active`.
+      tags: [Listings]
+      responses:
+        "200":
+          description: Listing marked as sold
+          headers:
+            X-RateLimit-Limit: {$ref: "#/components/headers/X-RateLimit-Limit"}
+            X-RateLimit-Remaining: {$ref: "#/components/headers/X-RateLimit-Remaining"}
+            X-RateLimit-Reset: {$ref: "#/components/headers/X-RateLimit-Reset"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DeleteResponse"}
+        "400":
+          description: "`INVALID_REFERENCE`"
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WriteError"}
+        "401": {$ref: "#/components/responses/WriteUnauthorized"}
+        "403": {$ref: "#/components/responses/ProfileForbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/WriteRateLimited"}
+        "500":
+          description: "`FETCH_FAILED` or `UPDATE_FAILED`"
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WriteError"}
+
+  /listings/{externalReference}/status:
+    parameters:
+      - $ref: "#/components/parameters/ExternalReference"
+    post:
+      operationId: setListingStatus
+      summary: Change only the status
+      description: |
+        Changes the status of an existing listing; all other fields stay. Price and location are
+        not checked again. `sold` sets the sold date (offline about an hour later (60 to 75 minutes)); any other
+        status clears it.
+      tags: [Listings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/StatusInput"}
+            example: {status: pending}
+      responses:
+        "200":
+          description: Status changed
+          headers:
+            X-RateLimit-Limit: {$ref: "#/components/headers/X-RateLimit-Limit"}
+            X-RateLimit-Remaining: {$ref: "#/components/headers/X-RateLimit-Remaining"}
+            X-RateLimit-Reset: {$ref: "#/components/headers/X-RateLimit-Reset"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/StatusResponse"}
+        "400":
+          description: "`INVALID_REFERENCE`, `INVALID_JSON` or `INVALID_BODY`"
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WriteError"}
+        "401": {$ref: "#/components/responses/WriteUnauthorized"}
+        "403": {$ref: "#/components/responses/ProfileForbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422": {$ref: "#/components/responses/ValidationFailed"}
+        "429": {$ref: "#/components/responses/WriteRateLimited"}
+        "500":
+          description: |
+            `FETCH_FAILED` or `UPDATE_FAILED`. `UPDATE_FAILED` is also returned when activation is
+            refused by the dealer's plan (message `listing_limit_reached` or `dealer_plan_required`).
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WriteError"}
+
+  /listings/bulk-upsert:
+    post:
+      operationId: bulkUpsertListings
+      summary: Create or replace up to 100 listings
+      description: |
+        Runs the PUT logic for each item, one after the other. Each item succeeds or fails on its
+        own. When the request itself is valid the response is always 200; check `errorCount`.
+        Counts as one request for the rate limit.
+      tags: [Listings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BulkUpsertRequest"}
+      responses:
+        "200":
+          description: Per-item results
+          headers:
+            X-RateLimit-Limit: {$ref: "#/components/headers/X-RateLimit-Limit"}
+            X-RateLimit-Remaining: {$ref: "#/components/headers/X-RateLimit-Remaining"}
+            X-RateLimit-Reset: {$ref: "#/components/headers/X-RateLimit-Reset"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BulkUpsertResponse"}
+        "400":
+          description: "`INVALID_JSON`, `INVALID_BODY`, `EMPTY_PAYLOAD` or `TOO_MANY_ITEMS` (with `maxItems`)"
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WriteError"}
+              example:
+                error: {code: TOO_MANY_ITEMS, message: Maximum 100 items per request, maxItems: 100}
+        "401": {$ref: "#/components/responses/WriteUnauthorized"}
+        "429": {$ref: "#/components/responses/WriteRateLimited"}
+
+  /brands:
+    get:
+      operationId: listBrands
+      summary: List makes and models
+      description: |
+        Every make Okasie knows with its models, to map the make and model a dealer typed to
+        Okasie's names. Public: no API key, not rate limited. Cached for a day; `meta.version`
+        (also the `ETag`) changes whenever the list changes, so fetch it periodically and map
+        again only when the version is new. A make or model that is not in the list is still
+        accepted by the listing endpoints and stored as sent.
+      tags: [Brands]
+      security: []
+      parameters:
+        - name: If-None-Match
+          in: header
+          description: The `ETag` of a list you already have; an unchanged list returns `304`.
+          schema: {type: string}
+      responses:
+        "200":
+          description: Makes and models
+          headers:
+            ETag:
+              description: The list version in quotes, for `If-None-Match`.
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BrandsResponse"}
+              example:
+                data:
+                  - name: Volkswagen
+                    models: [Arteon, Golf, ID.3, Polo, T-Roc, Tiguan]
+                  - name: Volvo
+                    models: [EX30, V60, XC40, XC60, XC90]
+                meta: {version: 4ef1af36ba196e7f, brandCount: 277, modelCount: 4576}
+        "304":
+          description: The list has not changed since the `ETag` you sent.
+
+  /locations:
+    get:
+      operationId: listLocations
+      summary: List dealer locations
+      description: |
+        The dealers linked to the key and their child locations, as a flat list sorted by company
+        name and city. No paging. Not rate limited.
+      tags: [Locations]
+      parameters:
+        - name: parentId
+          in: query
+          description: Only this dealer UUID (and its children with `includeChildren`). Alias `parent_id`. Ignored when not a UUID.
+          schema: {type: string, format: uuid}
+        - name: includeChildren
+          in: query
+          description: Only with `parentId`. `true` includes the child locations, `false` only the dealer.
+          schema: {type: boolean, default: true}
+        - name: withCounts
+          in: query
+          description: Fill `stats` with listing counts; with `false` the counts are 0.
+          schema: {type: boolean, default: true}
+        - name: search
+          in: query
+          description: Case-insensitive match on company name, name, city, province and Dealer ID.
+          schema: {type: string}
+      responses:
+        "200":
+          description: Locations
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LocationsResponse"}
+        "401": {$ref: "#/components/responses/ReadUnauthorized"}
+        "500": {$ref: "#/components/responses/ReadServerError"}
+
+  /locations/{id}/listings:
+    get:
+      operationId: listLocationListings
+      summary: Listings of one dealer location
+      description: |
+        Same listing objects and filters as `GET /listings`, limited to one dealer. Not rate
+        limited. A dealer outside your access gives an empty list. When `id` is not a UUID it is
+        ignored and every listing in scope is returned.
+      tags: [Locations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Dealer profile UUID.
+          schema: {type: string, format: uuid}
+        - name: includeChildren
+          in: query
+          description: Also return the listings of the dealer's child locations.
+          schema: {type: boolean, default: false}
+        - name: page
+          in: query
+          schema: {type: integer, minimum: 1, default: 1}
+        - name: pageSize
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, pending, sold, draft, all]
+            default: active
+        - name: updatedSince
+          in: query
+          schema: {type: string, format: date-time}
+        - name: locationCode
+          in: query
+          description: Narrow further to this Dealer ID.
+          schema: {type: string}
+      responses:
+        "200":
+          description: Listings
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ListingsResponse"}
+        "401": {$ref: "#/components/responses/ReadUnauthorized"}
+        "500": {$ref: "#/components/responses/ReadServerError"}
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "`Authorization: Bearer <secret>`"
+    apiKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: "`X-API-Key: <secret>`; wins when both headers are sent"
+
+  parameters:
+    ExternalReference:
+      name: externalReference
+      in: path
+      required: true
+      description: |
+        Your own identifier for the car, unique per API key. Trimmed. No fixed maximum; keep it
+        under 64 characters and URL-encode reserved characters. A reference used for one dealer
+        can never be used for another.
+      schema: {type: string}
+      example: DV-123456
+
+  headers:
+    X-RateLimit-Limit:
+      description: Requests allowed per window
+      schema: {type: integer}
+    X-RateLimit-Remaining:
+      description: Requests left in the current window
+      schema: {type: integer}
+    X-RateLimit-Reset:
+      description: Unix time in seconds when the window ends
+      schema: {type: integer}
+    Retry-After:
+      description: Seconds until the window ends (only on 429)
+      schema: {type: integer}
+
+  schemas:
+    ListingStatus:
+      type: string
+      enum: [active, pending, sold, draft]
+      description: |
+        Case-insensitive on input. `active` is published and counts towards the dealer's plan;
+        `pending` and `draft` are saved but not shown; `sold` goes offline about an hour later (60 to 75 minutes).
+
+    ListingInput:
+      type: object
+      description: |
+        Numbers may also be sent as numeric strings. Fields marked nullable accept `null`; for
+        other text fields `null` gives 422. `0` is stored as empty for `mileage`, `powerKw`,
+        `co2Emission`, `fuelConsumption`, `weight`, `previousOwners` and `warrantyMonths`.
+        Either `dealerLocationCode` or `dealerProfileId` is required.
+      required: [title]
+      properties:
+        dealerLocationCode:
+          type: string
+          maxLength: 120
+          description: Dealer ID, for example `OK-00148` (case-insensitive). The dealer must be linked to your key.
+          example: OK-00148
+        dealerProfileId:
+          type: string
+          maxLength: 120
+          description: Dealer profile UUID. Used instead of `dealerLocationCode` when both are sent.
+        status:
+          allOf: [{$ref: "#/components/schemas/ListingStatus"}]
+          default: draft
+        title:
+          type: string
+          minLength: 1
+          description: Must contain a non-space character (`400 INVALID_TITLE` otherwise).
+        description:
+          type: string
+          maxLength: 15000
+          nullable: true
+          description: Plain text; `\n` for line breaks.
+        price:
+          type: number
+          minimum: 0
+          description: Asking price in euro. Required and > 0 when `status` is `active` or `pending`.
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          default: EUR
+          description: Stored in upper case. The site and the read endpoints always use EUR.
+        brand:
+          type: string
+          maxLength: 120
+          description: |
+            Stored with Okasie's name when the make or a known variant of it is in `GET /brands`
+            (`VW` becomes `Volkswagen`); otherwise as sent.
+        model:
+          type: string
+          maxLength: 120
+          description: |
+            Stored with Okasie's spelling when the model is in `GET /brands` for that make
+            (`XC 40` becomes `XC40`); otherwise as sent.
+        variant:
+          type: string
+          maxLength: 120
+          nullable: true
+          description: Version or trim.
+        customType:
+          type: string
+          maxLength: 60
+          description: Same field as `variant`; wins when both are sent.
+        year:
+          type: integer
+          minimum: 1900
+          description: Model year, 1900 up to next year. `0` and `null` give 422.
+        firstRegistration:
+          type: string
+          maxLength: 10
+          description: Not validated, stored as sent. Use `YYYY-MM-DD` or `YYYY-MM`.
+          example: "2022-03-15"
+        mileage:
+          type: integer
+          minimum: 0
+          description: Kilometres.
+        fuelType:
+          type: string
+          maxLength: 60
+          description: |
+            Free text mapped (case, accent and punctuation insensitive) to `Benzine`, `Diesel`,
+            `Hybride (Benzine)`, `Hybride (Diesel)`, `Plug-in Hybride (Benzine)`,
+            `Plug-in Hybride (Diesel)`, `Elektrisch`, `LPG` or `Anders`. Accepted inputs include
+            `petrol`, `gasoline`, `hybrid`, `PHEV petrol`, `electric`, `EV`, `autogas`. Unmapped
+            values are stored as sent.
+        transmission:
+          type: string
+          maxLength: 60
+          description: |
+            Free text mapped to `Manueel` (`manual`, `handgeschakeld`), `Automaat` (`automatic`,
+            `automatisch`) or `Halfautomaat` (`semi-automatic`, `semi-automaat`). Unmapped values
+            are stored as sent.
+        bodyType:
+          type: string
+          maxLength: 60
+          description: |
+            Free text mapped to `Stadswagen`, `Hatchback`, `SUV & Pick-up`, `Bestelwagen`,
+            `Cabriolet`, `Monovolume`, `Berline`, `Break` or `Coupé` (inputs include `sedan`,
+            `estate`, `wagon`, `suv`, `van`, `convertible`, `mpv`, `coupe`). `other` becomes
+            `Stadswagen`. Unmapped values are stored as sent.
+        engine:
+          type: string
+          maxLength: 60
+          description: Displacement in litres, for example `1.6`; the site adds "L".
+        powerKw:
+          type: number
+          minimum: 0
+          description: Power in kW; stored as metric hp and read back as whole kW.
+        driveType:
+          type: string
+          maxLength: 60
+          nullable: true
+          description: Free text, for example `FWD`, `RWD`, `AWD`, `4x4`.
+        gears:
+          type: integer
+          minimum: 1
+          maximum: 12
+          nullable: true
+        doors:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: "`0` and `null` give 422."
+        seats:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: "`0` and `null` give 422."
+        weight:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Kilograms.
+        color:
+          type: string
+          maxLength: 60
+        paintType:
+          type: string
+          maxLength: 60
+          nullable: true
+          description: Free text, for example `Metallic`.
+        interiorColor:
+          type: string
+          maxLength: 60
+          nullable: true
+        interiorMaterial:
+          type: string
+          maxLength: 60
+          nullable: true
+          description: Free text, for example `Leder`, `Stof`.
+        vin:
+          type: string
+          maxLength: 32
+        co2Emission:
+          type: integer
+          minimum: 0
+          description: g/km.
+        co2Type:
+          type: string
+          maxLength: 30
+          nullable: true
+          description: Free text, for example `WLTP` or `NEDC`.
+        emissionClass:
+          type: string
+          maxLength: 30
+          description: Free text, for example `Euro 6d`.
+        fuelConsumption:
+          type: number
+          minimum: 0
+          nullable: true
+          description: l/100 km.
+        previousOwners:
+          type: integer
+          minimum: 0
+          nullable: true
+        serviceHistory:
+          type: boolean
+          nullable: true
+          description: JSON boolean only. `null` is stored as false; omit when unknown.
+        warranty:
+          type: boolean
+          nullable: true
+          description: JSON boolean only. `null` is stored as false; omit when unknown.
+        warrantyMonths:
+          type: integer
+          minimum: 0
+          nullable: true
+        vehicleType:
+          type: string
+          maxLength: 60
+          default: margin
+          description: VAT regime, `margin` or `vat` (`btw` is also treated as VAT). Other values are stored as sent.
+        conditionTags:
+          type: array
+          maxItems: 6
+          items: {type: string, maxLength: 32}
+          description: Free-text tags.
+        condition:
+          type: string
+          maxLength: 60
+          nullable: true
+          description: Stored as a single condition tag when `conditionTags` is not sent.
+        carPassUrl:
+          $ref: "#/components/schemas/CarPassValue"
+        carPass:
+          $ref: "#/components/schemas/CarPassValue"
+        car_pass_url:
+          $ref: "#/components/schemas/CarPassValue"
+        carPassNumber:
+          $ref: "#/components/schemas/CarPassValue"
+        postalCode:
+          type: string
+          maxLength: 32
+          description: Required (here or in `location`). A 4-digit Belgian code sets `province`.
+        city:
+          type: string
+          maxLength: 120
+          description: Required (here or in `location`).
+        province:
+          type: string
+          maxLength: 120
+          description: Required unless `postalCode` is a 4-digit Belgian code, in which case it is derived.
+        latitude:
+          type: number
+        longitude:
+          type: number
+        location:
+          $ref: "#/components/schemas/LocationInput"
+        features:
+          type: array
+          description: Omit to keep, `[]` to remove all. Deduplicated on category and name; max 50 stored.
+          items: {$ref: "#/components/schemas/FeatureInput"}
+        images:
+          type: array
+          description: Omit to keep, `[]` to remove all, else replaces the set. Max 50 used.
+          items: {$ref: "#/components/schemas/ImageInput"}
+
+    CarPassValue:
+      type: string
+      nullable: true
+      maxLength: 2048
+      description: |
+        A URL on `public.car-pass.be` or `car-pass.be`, or a certificate number with exactly 11
+        digits (other characters removed). Anything else gives 422. `carPassUrl`, `carPass`,
+        `car_pass_url` and `carPassNumber` are the same field; send one.
+
+    LocationInput:
+      type: object
+      description: Non-empty values here win over the top-level location fields.
+      properties:
+        postalCode: {type: string, maxLength: 32, nullable: true}
+        city: {type: string, maxLength: 120, nullable: true}
+        province: {type: string, maxLength: 120, nullable: true}
+        latitude: {type: number}
+        longitude: {type: number}
+
+    FeatureInput:
+      type: object
+      description: Items without a name are dropped.
+      properties:
+        name:
+          type: string
+          maxLength: 120
+          nullable: true
+        feature:
+          type: string
+          maxLength: 120
+          nullable: true
+          description: Alias of `name`.
+        category:
+          type: string
+          maxLength: 32
+          nullable: true
+          default: other
+          description: Free text, for example `comfort`, `safety`, `technology`.
+
+    ImageInput:
+      oneOf:
+        - type: string
+          maxLength: 2048
+          description: Public HTTPS URL.
+        - type: object
+          properties:
+            url:
+              type: string
+              maxLength: 2048
+              nullable: true
+              description: Public HTTPS URL.
+            imageUrl:
+              type: string
+              maxLength: 2048
+              nullable: true
+              description: Alias of `url`.
+            position:
+              type: integer
+              minimum: 0
+              description: Sort order; lowest is the main photo. Defaults to the array index.
+
+    BulkListingItem:
+      allOf:
+        - $ref: "#/components/schemas/ListingInput"
+        - type: object
+          required: [externalReference]
+          properties:
+            externalReference:
+              type: string
+              description: Your reference for this car. Alias `external_reference`.
+
+    BulkUpsertRequest:
+      oneOf:
+        - type: array
+          minItems: 1
+          maxItems: 100
+          items: {$ref: "#/components/schemas/BulkListingItem"}
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              minItems: 1
+              maxItems: 100
+              items: {$ref: "#/components/schemas/BulkListingItem"}
+
+    StatusInput:
+      type: object
+      required: [status]
+      properties:
+        status: {$ref: "#/components/schemas/ListingStatus"}
+
+    SkippedImage:
+      type: object
+      properties:
+        source:
+          type: string
+          nullable: true
+          description: The URL as sent.
+        reason:
+          type: string
+          description: |
+            `invalid-url`, `mirror_failed`, or a short Dutch description such as
+            `Afbeelding ophalen mislukt (404)`. Text for people; the wording can change.
+
+    Warnings:
+      type: object
+      description: Only present when photos were skipped.
+      properties:
+        skippedImages:
+          type: array
+          items: {$ref: "#/components/schemas/SkippedImage"}
+
+    UpsertResult:
+      type: object
+      required: [listingId, externalReference, status, listingUrl, created]
+      properties:
+        listingId: {type: string, format: uuid}
+        externalReference: {type: string}
+        status: {$ref: "#/components/schemas/ListingStatus"}
+        listingUrl:
+          type: string
+          nullable: true
+          description: Public page on okasie.be when `status` is `active`, else null.
+        created:
+          type: boolean
+          description: True when this call created the listing.
+        warnings: {$ref: "#/components/schemas/Warnings"}
+
+    UpsertResponse:
+      type: object
+      properties:
+        data: {$ref: "#/components/schemas/UpsertResult"}
+
+    StatusResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            listingId: {type: string, format: uuid}
+            externalReference: {type: string}
+            status: {$ref: "#/components/schemas/ListingStatus"}
+            listingUrl:
+              type: string
+              nullable: true
+              description: Public page when the new status is `active`, else null.
+
+    DeleteResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            listingId: {type: string, format: uuid}
+            externalReference: {type: string}
+            status:
+              type: string
+              enum: [sold]
+
+    BulkUpsertResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            successCount: {type: integer}
+            errorCount: {type: integer}
+            results:
+              type: array
+              items:
+                allOf:
+                  - type: object
+                    properties:
+                      index:
+                        type: integer
+                        description: Position in the request array, from 0.
+                  - $ref: "#/components/schemas/UpsertResult"
+            errors:
+              type: array
+              items:
+                type: object
+                properties:
+                  index: {type: integer}
+                  externalReference:
+                    type: string
+                    description: Absent when the item had none.
+                  code:
+                    type: string
+                    description: Same codes as the single PUT, plus `INVALID_REFERENCE` for an item without reference.
+                  message: {type: string}
+                  status:
+                    type: integer
+                    description: HTTP status the single PUT would have returned.
+                  issues:
+                    type: array
+                    items: {$ref: "#/components/schemas/ValidationIssue"}
+
+    ValidationIssue:
+      type: object
+      properties:
+        path:
+          type: string
+          description: Field name, dotted for nested fields (`images.2.url`).
+        message: {type: string}
+        code:
+          type: string
+          description: Validation rule, for example `invalid_type`, `too_small`, `too_big`, `invalid_enum_value`, `custom`.
+
+    WriteError:
+      type: object
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - UNAUTHORIZED
+                - RATE_LIMITED
+                - INVALID_REFERENCE
+                - INVALID_JSON
+                - INVALID_BODY
+                - EMPTY_PAYLOAD
+                - TOO_MANY_ITEMS
+                - VALIDATION_FAILED
+                - INVALID_TITLE
+                - INVALID_PRICE
+                - INVALID_PROFILE
+                - INVALID_LOCATION
+                - PROFILE_FORBIDDEN
+                - NOT_FOUND
+                - REFERENCE_OWNED_BY_OTHER_DEALER
+                - LISTING_LIMIT_REACHED
+                - DEALER_PLAN_REQUIRED
+                - FETCH_FAILED
+                - UPSERT_FAILED
+                - FEATURES_FAILED
+                - IMAGES_FAILED
+                - UPDATE_FAILED
+            message: {type: string}
+            issues:
+              type: array
+              description: Only with `VALIDATION_FAILED`.
+              items: {$ref: "#/components/schemas/ValidationIssue"}
+            retryAt:
+              type: string
+              format: date-time
+              description: Only with `RATE_LIMITED`.
+            maxItems:
+              type: integer
+              description: Only with `TOO_MANY_ITEMS`.
+
+    ReadError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Unauthorized
+
+    Listing:
+      type: object
+      description: Fields without a value are null.
+      properties:
+        id: {type: string, format: uuid}
+        slug: {type: string}
+        listingUrl:
+          type: string
+          description: Public page; set for every status but only public while `active`.
+        dealerProfileId: {type: string, format: uuid}
+        externalReference: {type: string, nullable: true}
+        externalProvider:
+          type: string
+          nullable: true
+          description: Identifies the partner key or feed that created the listing.
+        title: {type: string}
+        description: {type: string, nullable: true}
+        status:
+          type: string
+          enum: [active, pending, sold, draft, inactive]
+          description: "`inactive`: deleted and offline."
+        price: {type: number, nullable: true}
+        currency:
+          type: string
+          enum: [EUR]
+        brand: {type: string, nullable: true}
+        model: {type: string, nullable: true}
+        variant: {type: string, nullable: true}
+        year: {type: integer, nullable: true}
+        firstRegistration: {type: string, nullable: true}
+        mileage: {type: integer, nullable: true}
+        fuelType: {type: string, nullable: true}
+        transmission: {type: string, nullable: true}
+        bodyType: {type: string, nullable: true}
+        color: {type: string, nullable: true}
+        doors: {type: integer, nullable: true}
+        seats: {type: integer, nullable: true}
+        powerKw: {type: integer, nullable: true}
+        engine: {type: string, nullable: true}
+        co2Emission: {type: integer, nullable: true}
+        co2Type: {type: string, nullable: true}
+        emissionClass: {type: string, nullable: true}
+        fuelConsumption: {type: number, nullable: true}
+        driveType: {type: string, nullable: true}
+        gears: {type: integer, nullable: true}
+        interiorColor: {type: string, nullable: true}
+        interiorMaterial: {type: string, nullable: true}
+        paintType: {type: string, nullable: true}
+        weight: {type: integer, nullable: true}
+        previousOwners: {type: integer, nullable: true}
+        serviceHistory: {type: boolean, nullable: true}
+        warranty: {type: boolean, nullable: true}
+        warrantyMonths: {type: integer, nullable: true}
+        vehicleType: {type: string, nullable: true}
+        conditionTags:
+          type: array
+          nullable: true
+          items: {type: string}
+        vin: {type: string, nullable: true}
+        carPassUrl: {type: string, nullable: true}
+        location:
+          type: object
+          properties:
+            postalCode: {type: string, nullable: true}
+            city: {type: string, nullable: true}
+            province: {type: string, nullable: true}
+            latitude: {type: number, nullable: true}
+            longitude: {type: number, nullable: true}
+        images:
+          type: array
+          items:
+            type: object
+            properties:
+              url: {type: string}
+              position: {type: integer, nullable: true}
+        mainImageUrl: {type: string, nullable: true}
+        features:
+          type: array
+          items:
+            type: object
+            properties:
+              category: {type: string, nullable: true}
+              name: {type: string, nullable: true}
+        dealer: {$ref: "#/components/schemas/Dealer"}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        soldAt: {type: string, format: date-time, nullable: true}
+
+    DealerSummary:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        locationCode: {type: string, nullable: true}
+        companyName: {type: string, nullable: true}
+        fullName: {type: string, nullable: true}
+        displayName: {type: string, nullable: true}
+
+    Dealer:
+      type: object
+      nullable: true
+      properties:
+        id: {type: string, format: uuid}
+        parentId: {type: string, format: uuid, nullable: true}
+        locationCode:
+          type: string
+          nullable: true
+          description: Dealer ID, for example `OK-00148`.
+        companyName: {type: string, nullable: true}
+        fullName: {type: string, nullable: true}
+        displayName: {type: string, nullable: true}
+        email: {type: string, nullable: true}
+        phone: {type: string, nullable: true}
+        address: {type: string, nullable: true}
+        postalCode: {type: string, nullable: true}
+        city: {type: string, nullable: true}
+        province: {type: string, nullable: true}
+        logoUrl: {type: string, nullable: true}
+        metadata: {type: object}
+        parent:
+          allOf: [{$ref: "#/components/schemas/DealerSummary"}]
+          nullable: true
+
+    Location:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Usable as `dealerProfileId`.
+        parentId: {type: string, format: uuid, nullable: true}
+        isRoot:
+          type: boolean
+          nullable: true
+          description: True when the dealer is linked to your key directly.
+        locationCode:
+          type: string
+          nullable: true
+          description: Dealer ID; usable as `dealerLocationCode`.
+        companyName: {type: string, nullable: true}
+        fullName: {type: string, nullable: true}
+        displayName: {type: string, nullable: true}
+        email: {type: string, nullable: true}
+        phone: {type: string, nullable: true}
+        address: {type: string, nullable: true}
+        postalCode: {type: string, nullable: true}
+        city: {type: string, nullable: true}
+        province: {type: string, nullable: true}
+        logoUrl: {type: string, nullable: true}
+        metadata: {type: object}
+        parent:
+          allOf: [{$ref: "#/components/schemas/DealerSummary"}]
+          nullable: true
+        stats:
+          type: object
+          properties:
+            activeListings: {type: integer}
+            totalListings: {type: integer}
+            avgActivePrevMonth: {type: number, nullable: true}
+        updatedAt: {type: string, format: date-time, nullable: true}
+
+    PartnerAccess:
+      type: object
+      properties:
+        scope:
+          type: string
+          enum: [restricted, global]
+        rootProfileIds:
+          type: array
+          items: {type: string, format: uuid}
+          description: Dealers linked to the key.
+        profileIds:
+          type: array
+          nullable: true
+          items: {type: string, format: uuid}
+          description: Linked dealers plus their child locations; null for a key without dealer restriction.
+
+    Pagination:
+      type: object
+      properties:
+        page: {type: integer}
+        pageSize: {type: integer}
+        totalItems: {type: integer, nullable: true}
+        totalPages: {type: integer, nullable: true}
+
+    ListingsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: {$ref: "#/components/schemas/Listing"}
+        pagination: {$ref: "#/components/schemas/Pagination"}
+        meta:
+          type: object
+          properties:
+            partner:
+              type: object
+              properties:
+                id: {type: string}
+                name: {type: string, nullable: true}
+                source: {type: string}
+                access: {$ref: "#/components/schemas/PartnerAccess"}
+            filters:
+              type: object
+              additionalProperties: true
+            profileScope:
+              type: object
+              properties:
+                allowed:
+                  type: array
+                  nullable: true
+                  items: {type: string, format: uuid}
+                effective:
+                  type: array
+                  nullable: true
+                  items: {type: string, format: uuid}
+                filters:
+                  type: object
+                  additionalProperties: true
+
+    BrandsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          description: Makes in alphabetical order.
+          items:
+            type: object
+            properties:
+              name: {type: string, description: "Okasie's name of the make, as stored on listings."}
+              models:
+                type: array
+                description: Okasie's model names for this make, in alphabetical order.
+                items: {type: string}
+        meta:
+          type: object
+          properties:
+            version: {type: string, description: Changes whenever the list changes.}
+            brandCount: {type: integer}
+            modelCount: {type: integer}
+
+    LocationsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: {$ref: "#/components/schemas/Location"}
+        meta:
+          type: object
+          properties:
+            total: {type: integer}
+            profileIds:
+              type: array
+              items: {type: string, format: uuid}
+            rootProfileIds:
+              type: array
+              nullable: true
+              items: {type: string, format: uuid}
+            filters:
+              type: object
+              properties:
+                parentId: {type: string, nullable: true}
+                search: {type: string, nullable: true}
+            partner:
+              type: object
+              properties:
+                id: {type: string}
+                name: {type: string, nullable: true}
+                access: {$ref: "#/components/schemas/PartnerAccess"}
+
+  responses:
+    WriteUnauthorized:
+      description: "`UNAUTHORIZED`: missing or unknown key, or no `write:listings` scope"
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/WriteError"}
+          example:
+            error: {code: UNAUTHORIZED, message: Invalid or missing API key}
+    ProfileForbidden:
+      description: "`PROFILE_FORBIDDEN`: the dealer is not linked to your key"
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/WriteError"}
+          example:
+            error: {code: PROFILE_FORBIDDEN, message: Partner does not have access to the requested profile}
+    NotFound:
+      description: "`NOT_FOUND`: your key has no listing with this reference"
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/WriteError"}
+          example:
+            error: {code: NOT_FOUND, message: Listing not found for this partner}
+    ValidationFailed:
+      description: "`VALIDATION_FAILED` with `issues`"
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/WriteError"}
+          example:
+            error:
+              code: VALIDATION_FAILED
+              message: Payload validation failed
+              issues:
+                - {path: doors, message: Number must be greater than or equal to 1, code: too_small}
+    WriteRateLimited:
+      description: "`RATE_LIMITED`"
+      headers:
+        Retry-After: {$ref: "#/components/headers/Retry-After"}
+        X-RateLimit-Limit: {$ref: "#/components/headers/X-RateLimit-Limit"}
+        X-RateLimit-Remaining: {$ref: "#/components/headers/X-RateLimit-Remaining"}
+        X-RateLimit-Reset: {$ref: "#/components/headers/X-RateLimit-Reset"}
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/WriteError"}
+          example:
+            error: {code: RATE_LIMITED, message: Too many requests, retryAt: "2026-11-06T10:15:00.000Z"}
+    ReadUnauthorized:
+      description: Missing or unknown key
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ReadError"}
+          example: {error: Unauthorized}
+    ReadRateLimited:
+      description: Rate limit reached
+      headers:
+        Retry-After: {$ref: "#/components/headers/Retry-After"}
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ReadError"}
+          example: {error: Too many requests}
+    ReadServerError:
+      description: Okasie could not load the data
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ReadError"}
+          example: {error: Failed to load listings}

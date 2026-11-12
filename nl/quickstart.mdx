@@ -1,0 +1,122 @@
+---
+title: Snel aan de slag
+description: "Begin met de Okasie Partner API in minder dan 5 minuten"
+---
+
+Deze handleiding helpt u bij uw eerste API-aanroep naar de Okasie Partner API.
+
+## Vereisten
+
+<Steps>
+  <Step title="Vraag API-toegang aan">
+    Neem contact op met [info@okasie.be](mailto:info@okasie.be) om partneraccount aan te vragen.
+    U ontvangt een API-sleutel (geheim). Om te publiceren hebt u ook de scope `write:listings` nodig, en Okasie koppelt de dealers die u mag bedienen aan uw sleutel (zie [Authenticatie](/nl/authentication)).
+  </Step>
+
+  <Step title="Bewaar uw inloggegevens">
+    Sla uw API-sleutel veilig op. Deel deze nooit in clientcode of openbare repositories.
+  </Step>
+</Steps>
+
+## Uw eerste API-aanroep
+
+### Advertenties ophalen
+
+<CodeGroup>
+```bash cURL
+curl -X GET "https://www.okasie.be/api/external/v1/listings?status=active&pageSize=10" \
+  -H "Authorization: Bearer UW_API_GEHEIM"
+```
+
+```javascript Node.js
+const response = await fetch(
+  "https://www.okasie.be/api/external/v1/listings?status=active&pageSize=10",
+  {
+    headers: {
+      Authorization: `Bearer ${process.env.PARTNER_SECRET}`,
+    },
+  }
+);
+
+const data = await response.json();
+console.log(`Gevonden: ${data.pagination.totalItems} advertenties`);
+```
+
+```python Python
+import os
+import requests
+
+url = "https://www.okasie.be/api/external/v1/listings"
+headers = {"Authorization": f"Bearer {os.getenv('PARTNER_SECRET')}"}
+params = {"status": "active", "pageSize": 10}
+
+response = requests.get(url, headers=headers, params=params)
+data = response.json()
+print(f"Gevonden: {data['pagination']['totalItems']} advertenties")
+```
+</CodeGroup>
+
+### Verwacht antwoord
+
+```json
+{
+  "data": [
+    {
+      "id": "46c7f6c9-70f7-4f98-8c32-12f1a67c6f2e",
+      "title": "Volkswagen Golf 1.5 TSI",
+      "status": "active",
+      "price": 24995,
+      "brand": "Volkswagen",
+      "model": "Golf",
+      "year": 2021,
+      "mileage": 35000,
+      "fuelType": "Benzine",
+      "carPassUrl": "https://public.car-pass.be/vhr/example"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 10,
+    "totalItems": 156,
+    "totalPages": 16
+  },
+  "meta": {
+    "partner": {
+      "id": "uw-partner-id"
+    }
+  }
+}
+```
+
+## Volgende stappen
+
+<CardGroup cols={2}>
+  <Card title="Authenticatie" icon="lock" href="/nl/authentication">
+    Leer over API-beveiligingspraktijken
+  </Card>
+  <Card title="Schrijfoperaties" icon="pen" href="/api-reference/listings/upsert">
+    Maak en werk advertenties bij
+  </Card>
+  <Card title="Bulk operaties" icon="layer-group" href="/api-reference/listings/bulk-upsert">
+    Synchroniseer meerdere advertenties tegelijk
+  </Card>
+  <Card title="Locaties" icon="location-dot" href="/api-reference/locations/list">
+    Beheer dealerlocaties
+  </Card>
+</CardGroup>
+
+## Veelvoorkomende problemen
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized">
+    Controleer of uw API-sleutel correct is en de `Authorization: Bearer` prefix bevat. Bij een schrijfoperatie betekent 401 ook dat uw sleutel de scope `write:listings` mist.
+  </Accordion>
+
+  <Accordion title="403 Forbidden">
+    De dealer is niet aan uw API-sleutel gekoppeld (`PROFILE_FORBIDDEN`). Vraag Okasie om de dealer te koppelen.
+  </Accordion>
+
+  <Accordion title="429 Too Many Requests">
+    U heeft de limiet van 120 aanvragen per minuut bereikt. Wacht het aantal seconden uit de header `Retry-After` en probeer opnieuw.
+  </Accordion>
+</AccordionGroup>

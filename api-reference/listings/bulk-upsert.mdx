@@ -1,0 +1,166 @@
+---
+title: Bulk Create/Update Listings
+api: POST /api/external/v1/listings/bulk-upsert
+description: "Create or replace up to 100 listings in one request"
+---
+
+Runs [Create/Update Listing](/api-reference/listings/upsert) for up to 100 cars in one request. Every item follows exactly the same rules as the single PUT (full replacement, required fields, images, errors), and every item succeeds or fails on its own.
+
+<Note>
+  Requires the `write:listings` scope. The whole request counts as **one** request for the [rate limit](/rate-limiting).
+</Note>
+
+## Request body
+
+Either a JSON array of items, or an object with the array in `items`. Between 1 and 100 items.
+
+<ParamField body="items" type="object[]" required>
+  The listings. Each item is the body of [Create/Update Listing](/api-reference/listings/upsert) plus its reference.
+
+  <Expandable title="item properties">
+    <ParamField body="externalReference" type="string" required>
+      Your reference for this car, the same value you would put in the path of the single PUT. `external_reference` is accepted as another name.
+    </ParamField>
+    <ParamField body="..." type="any">
+      Every field of [Create/Update Listing](/api-reference/listings/upsert).
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+Items are processed one after the other, in the order sent. Photos are downloaded during the request, so a request with many new photos can take long: send fewer items per request when they carry photos, and use a client timeout of at least a few minutes.
+
+## Response
+
+When the request itself is valid the response is **always HTTP 200**, also when some or all items failed. Check `errorCount` and `errors`. The response carries the [rate limit headers](/rate-limiting).
+
+<ResponseField name="data.successCount" type="integer">
+  Number of items saved.
+</ResponseField>
+
+<ResponseField name="data.errorCount" type="integer">
+  Number of items refused.
+</ResponseField>
+
+<ResponseField name="data.results" type="object[]">
+  One entry per saved item.
+
+  <Expandable title="properties">
+    <ResponseField name="index" type="integer">Position of the item in your array, starting at 0.</ResponseField>
+    <ResponseField name="externalReference" type="string">Your reference.</ResponseField>
+    <ResponseField name="listingId" type="string">Okasie listing UUID.</ResponseField>
+    <ResponseField name="status" type="string">The stored status.</ResponseField>
+    <ResponseField name="listingUrl" type="string | null">The public page when `status` is `active`; `null` otherwise.</ResponseField>
+    <ResponseField name="created" type="boolean">`true` when this request created the listing.</ResponseField>
+    <ResponseField name="warnings" type="object">Only present when photos were skipped: `skippedImages[]` with `source` and `reason`, as for the single PUT.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="data.errors" type="object[]">
+  One entry per refused item.
+
+  <Expandable title="properties">
+    <ResponseField name="index" type="integer">Position of the item in your array, starting at 0.</ResponseField>
+    <ResponseField name="externalReference" type="string">Your reference; absent when the item had none.</ResponseField>
+    <ResponseField name="code" type="string">Error code, the same codes as the single PUT (for example `VALIDATION_FAILED`, `INVALID_LOCATION`, `PROFILE_FORBIDDEN`, `LISTING_LIMIT_REACHED`).</ResponseField>
+    <ResponseField name="message" type="string">Description of the error.</ResponseField>
+    <ResponseField name="status" type="integer">The HTTP status the single PUT would have returned.</ResponseField>
+    <ResponseField name="issues" type="object[]">Only for `VALIDATION_FAILED`: `path`, `message` and `code` per problem.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST "https://www.okasie.be/api/external/v1/listings/bulk-upsert" \
+  -H "Authorization: Bearer YOUR_API_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "items": [
+      {
+        "externalReference": "DV-123456",
+        "dealerLocationCode": "OK-00148",
+        "status": "active",
+        "title": "Volkswagen Golf 1.5 TSI Life",
+        "price": 21950,
+        "brand": "Volkswagen",
+        "model": "Golf",
+        "year": 2022,
+        "mileage": 38500,
+        "fuelType": "Benzine",
+        "postalCode": "9000",
+        "city": "Gent",
+        "images": ["https://images.example.com/dv/123456/1.jpg"]
+      },
+      {
+        "externalReference": "DV-123457",
+        "dealerLocationCode": "OK-00148",
+        "status": "active",
+        "title": "Renault Trafic 2.0 dCi",
+        "price": 26990,
+        "doors": 0,
+        "postalCode": "9000",
+        "city": "Gent"
+      }
+    ]
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200 partial success
+{
+  "data": {
+    "successCount": 1,
+    "errorCount": 1,
+    "results": [
+      {
+        "index": 0,
+        "externalReference": "DV-123456",
+        "listingId": "0c52cae7-bcaa-4b37-be0d-1b78c92c5225",
+        "status": "active",
+        "listingUrl": "https://www.okasie.be/aanbod/volkswagen-golf-1-5-tsi-life--0c52cae7-bcaa-4b37-be0d-1b78c92c5225",
+        "created": true
+      }
+    ],
+    "errors": [
+      {
+        "index": 1,
+        "externalReference": "DV-123457",
+        "message": "Validation failed",
+        "code": "VALIDATION_FAILED",
+        "status": 422,
+        "issues": [
+          {"path": "doors", "message": "Number must be greater than or equal to 1", "code": "too_small"}
+        ]
+      }
+    ]
+  }
+}
+```
+
+```json 400 too many items
+{
+  "error": {
+    "code": "TOO_MANY_ITEMS",
+    "message": "Maximum 100 items per request",
+    "maxItems": 100
+  }
+}
+```
+</ResponseExample>
+
+## Errors for the whole request
+
+These refuse the request before any item is processed.
+
+| Status | Code | When |
+|--------|------|------|
+| 401 | `UNAUTHORIZED` | Missing or unknown API key, or the key lacks `write:listings` |
+| 429 | `RATE_LIMITED` | Rate limit reached; the body has `retryAt` |
+| 400 | `INVALID_JSON` | The body is not valid JSON |
+| 400 | `INVALID_BODY` | The body is neither an array nor an object with an `items` array |
+| 400 | `EMPTY_PAYLOAD` | The array is empty |
+| 400 | `TOO_MANY_ITEMS` | More than 100 items; the body has `maxItems` |
+
+## Errors per item
+
+Besides every error code of [Create/Update Listing](/api-reference/listings/upsert#errors), an item can fail with `INVALID_REFERENCE` (status 400) when it has no `externalReference`.
