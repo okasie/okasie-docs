@@ -693,6 +693,10 @@ components:
           type: boolean
           nullable: true
           description: JSON boolean only. `null` is stored as false; omit when unknown.
+        isLightCommercial:
+          type: boolean
+          nullable: true
+          description: Light commercial vehicle (lichte vracht). JSON boolean only; omit or null when unknown.
         warrantyMonths:
           type: integer
           minimum: 0
@@ -1060,6 +1064,7 @@ components:
         previousOwners: {type: integer, nullable: true}
         serviceHistory: {type: boolean, nullable: true}
         warranty: {type: boolean, nullable: true}
+        isLightCommercial: {type: boolean, nullable: true}
         warrantyMonths: {type: integer, nullable: true}
         vehicleType: {type: string, nullable: true}
         conditionTags:
