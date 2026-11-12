@@ -1,0 +1,131 @@
+---
+title: Error Handling
+description: "Error bodies and the full list of error codes"
+---
+
+## Two error bodies
+
+**Write endpoints** (`PUT`/`DELETE /listings/{externalReference}`, `POST /listings/{externalReference}/status`, `POST /listings/bulk-upsert`) return an object with a stable `code` and a readable `message`. Build your logic on `code`; the `message` text may change.
+
+```json
+{
+  "error": {
+    "code": "INVALID_PRICE",
+    "message": "price is required when status is active or pending"
+  }
+}
+```
+
+Some codes add fields next to `code` and `message`:
+
+| Field | With code | Content |
+|-------|-----------|---------|
+| `issues` | `VALIDATION_FAILED` | One entry per problem: `path` (field name, dotted for nested fields such as `images.2.url`), `message`, `code` (validation rule, for example `invalid_type`, `too_small`, `too_big`, `invalid_enum_value`, `custom`) |
+| `retryAt` | `RATE_LIMITED` | ISO 8601 time at which you can send again |
+| `maxItems` | `TOO_MANY_ITEMS` | `100` |
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_FAILED",
+    "message": "Payload validation failed",
+    "issues": [
+      {"path": "title", "message": "Required", "code": "invalid_type"},
+      {"path": "year", "message": "Number must be less than or equal to 2027", "code": "too_big"}
+    ]
+  }
+}
+```
+
+**Read endpoints** (`GET /listings`, `GET /locations`, `GET /locations/{id}/listings`) return a plain message:
+
+```json
+{"error": "Unauthorized"}
+```
+
+[Bulk upsert](/api-reference/listings/bulk-upsert) returns `200` with per-item errors in `data.errors[]`; each entry has `index`, `externalReference`, `code`, `message`, `status` and, for validation errors, `issues`.
+
+## HTTP status codes
+
+| Status | Meaning | What to do |
+|--------|---------|------------|
+| `200` | Success. Also used when a listing is created; the API never returns `201` | Read `data` |
+| `400` | The request or a required value is wrong | Fix the request; sending it again unchanged gives the same error |
+| `401` | Missing or unknown key, or a write without `write:listings` | Check the key and its scopes |
+| `403` | The dealer is not linked to your key | Ask Okasie to link the dealer |
+| `404` | Your key has no listing with this reference | Check the reference; create it with `PUT` |
+| `409` | Refused because of the state at Okasie (plan, reference owner) | See the code; usually needs the dealer or Okasie |
+| `422` | One or more fields break a rule | See `issues` |
+| `429` | Rate limit reached | Wait `Retry-After` seconds and retry |
+| `500` | Okasie could not complete the request | Retry later with backoff; contact support if it persists |
+
+## Error codes of the write endpoints
+
+| Code | Status | Endpoints | Meaning |
+|------|--------|-----------|---------|
+| `UNAUTHORIZED` | 401 | all writes | Missing or unknown API key, or the key lacks `write:listings` |
+| `RATE_LIMITED` | 429 | all writes | Rate limit reached; see `retryAt` and `Retry-After` |
+| `INVALID_REFERENCE` | 400 | PUT, DELETE, status, bulk item | The reference is empty, or a bulk item has no `externalReference` |
+| `INVALID_JSON` | 400 | PUT, status, bulk | The body is not valid JSON |
+| `INVALID_BODY` | 400 | PUT, status, bulk | The body is not a JSON object (bulk: not an array and no `items` array) |
+| `EMPTY_PAYLOAD` | 400 | bulk | The item array is empty |
+| `TOO_MANY_ITEMS` | 400 | bulk | More than 100 items |
+| `VALIDATION_FAILED` | 422 | PUT, status, bulk item | A field breaks a rule; see `issues` |
+| `INVALID_TITLE` | 400 | PUT, bulk item | `title` contains only spaces |
+| `INVALID_PRICE` | 400 | PUT, bulk item | `status` is `active` or `pending` without a `price` above 0 |
+| `INVALID_PROFILE` | 400 | PUT, bulk item | No dealer found for `dealerProfileId` / `dealerLocationCode`. The message reads "dealerProfileId or dealerLocationCode is required" also when the Dealer ID is unknown |
+| `PROFILE_FORBIDDEN` | 403 | PUT, DELETE, status, bulk item | The dealer is not (or no longer) linked to your key |
+| `INVALID_LOCATION` | 400 | PUT, bulk item | `postalCode` or `city` missing, or `province` missing for a postal code that is not a 4-digit Belgian code. The message is in Dutch: "province, city en postalCode zijn verplicht voor een listing" |
+| `NOT_FOUND` | 404 | DELETE, status | Your key has no listing with this reference |
+| `REFERENCE_OWNED_BY_OTHER_DEALER` | 409 | PUT, bulk item | Keys limited to approved dealers only: your key already uses this reference for a car of another dealer. Use a new reference |
+| `LISTING_LIMIT_REACHED` | 409 | PUT, bulk item | The car would be `active` but the dealer's plan has no free place. Nothing was saved. Send it as `draft` or ask the dealer to upgrade |
+| `DEALER_PLAN_REQUIRED` | 409 | PUT, bulk item | The car would be `active` but the dealer has no active Okasie plan. Nothing was saved |
+| `FETCH_FAILED` | 500 | PUT, DELETE, status, bulk item | Okasie could not read the listing. Nothing changed; retry |
+| `UPSERT_FAILED` | 500 | PUT, bulk item | Okasie could not save the listing. Nothing changed; retry |
+| `FEATURES_FAILED` | 500 | PUT, bulk item | The listing was saved but its features were not. Send the same PUT again |
+| `IMAGES_FAILED` | 500 | PUT, bulk item | The listing was saved but its photos were not. Send the same PUT again |
+| `UPDATE_FAILED` | 500 | DELETE, status | The status was not changed. On the status endpoint this also covers a refused activation (message `listing_limit_reached` or `dealer_plan_required`) |
+
+A photo that cannot be downloaded is not an error: the listing is saved and the photo is reported in `warnings.skippedImages` (see [Image Handling](/guides/image-handling)).
+
+## Errors of the read endpoints
+
+| Status | Body |
+|--------|------|
+| 401 | `{"error": "Unauthorized"}` |
+| 429 | `{"error": "Too many requests"}` (`GET /listings` only) |
+| 500 | `{"error": "Failed to load listings"}`, `{"error": "Failed to load locations"}` or `{"error": "Failed to load listings for location"}` |
+
+Invalid query parameters never give an error: they fall back to their default or are ignored.
+
+## Retrying
+
+All write calls can be repeated safely: sending the same `PUT`, `DELETE` or status change twice gives the same result. Retry `429` after `Retry-After`, and `500` with increasing delays. Do not retry `400`, `403`, `409` or `422` unchanged.
+
+```javascript
+async function putListing(reference, listing) {
+  const response = await fetch(
+    `https://www.okasie.be/api/external/v1/listings/${encodeURIComponent(reference)}`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${process.env.PARTNER_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(listing),
+    }
+  );
+  const body = await response.json();
+  if (response.ok) return body.data;
+
+  const { code, message, issues } = body.error;
+  if (code === "VALIDATION_FAILED") {
+    throw new Error(issues.map((i) => `${i.path}: ${i.message}`).join("; "));
+  }
+  throw new Error(`${code}: ${message}`);
+}
+```
+
+## Contacting support
+
+Send [info@okasie.be](mailto:info@okasie.be) the `externalReference`, the time of the call, the `code` you received and, if you sent one, your `X-Request-Id`. Okasie keeps a log of saved and refused cars, so it can look up why a car did not come through.

@@ -1,0 +1,81 @@
+---
+title: List Makes and Models
+api: GET /api/external/v1/brands
+description: "The makes and models Okasie knows, to map a dealer's make and model to"
+authMethod: none
+---
+
+Returns every make Okasie knows with its models. Stock systems often let dealers type the make and model freely; map those to the names in this list before you send a listing, so the car shows up under the right make and model in Okasie's search and brand pages.
+
+This endpoint is public: it needs no API key and is not rate limited.
+
+## Keeping the list up to date
+
+The list is cached for a day. `meta.version`, also sent as the `ETag` header, changes whenever the list changes. Fetch it periodically (once a day is enough) and send the last `ETag` you received as `If-None-Match`: an unchanged list returns `304 Not Modified` without a body, so you only map again when there is something new.
+
+## How Okasie matches make and model
+
+When you send a listing with [Create or Update Listing](/api-reference/listings/upsert):
+
+- **Make**: a make from this list, or a known variant of it, is stored with Okasie's name. For example `VW` becomes `Volkswagen` and `Mercedes` becomes `Mercedes-Benz`.
+- **Model**: a model from this list for that make is stored with Okasie's spelling, ignoring case, spaces and accents. For example `XC 40` becomes `XC40`.
+- **Not in the list**: a make or model that does not match is stored exactly as you sent it. A listing is never refused because of its make or model.
+
+If you have no match for a model, send the dealer's model as it is rather than a generic value such as "Other": the listing then keeps the information the dealer entered.
+
+## Request headers
+
+<ParamField header="If-None-Match" type="string">
+  The `ETag` of a list you already have. When the list has not changed, the response is `304` without a body.
+</ParamField>
+
+## Response
+
+<ResponseField name="data" type="object[]">
+  Makes in alphabetical order.
+  <Expandable title="make properties">
+    <ResponseField name="name" type="string">Okasie's name of the make, as stored on listings.</ResponseField>
+    <ResponseField name="models" type="string[]">Okasie's model names for this make, in alphabetical order.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="meta" type="object">
+  `version` (changes whenever the list changes), `brandCount` and `modelCount`.
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl "https://www.okasie.be/api/external/v1/brands"
+```
+
+```bash cURL (only when changed)
+curl "https://www.okasie.be/api/external/v1/brands" \
+  -H 'If-None-Match: "4ef1af36ba196e7f"'
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "data": [
+    {
+      "name": "Volkswagen",
+      "models": ["Arteon", "Golf", "ID.3", "Polo", "T-Roc", "Tiguan"]
+    },
+    {
+      "name": "Volvo",
+      "models": ["EX30", "V60", "XC40", "XC60", "XC90"]
+    }
+  ],
+  "meta": {
+    "version": "4ef1af36ba196e7f",
+    "brandCount": 277,
+    "modelCount": 4576
+  }
+}
+```
+
+```text 304
+(no body: the list has not changed)
+```
+</ResponseExample>

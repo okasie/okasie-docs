@@ -1,0 +1,134 @@
+---
+title: Change Listing Status
+api: POST /api/external/v1/listings/{externalReference}/status
+description: "Change only the status of an existing listing"
+---
+
+Changes the status of an existing listing without sending the whole car. All other fields stay as they are. There is no endpoint to read a single listing's status; use [List Listings](/api-reference/listings/list) for that.
+
+<Note>
+  Requires the `write:listings` scope.
+</Note>
+
+<Warning>
+  This call does not check the price or the location again. Only set a listing to `active` when it was sent with a price, or send the whole car with [Create/Update Listing](/api-reference/listings/upsert) instead, which checks everything.
+</Warning>
+
+## Path parameter
+
+<ParamField path="externalReference" type="string" required>
+  The reference you used when creating the listing.
+</ParamField>
+
+## Request body
+
+<ParamField body="status" type="string" required>
+  One of `active`, `pending`, `sold`, `draft` (case-insensitive). See [status](/api-reference/listings/upsert#status-and-price) for what each one means. `sold` sets the sold date, and Okasie takes the listing offline about an hour later (60 to 75 minutes); any other status clears the sold date.
+</ParamField>
+
+## Response
+
+HTTP 200 with the [rate limit headers](/rate-limiting).
+
+<ResponseField name="data.listingId" type="string">
+  Okasie listing UUID.
+</ResponseField>
+
+<ResponseField name="data.externalReference" type="string">
+  Your reference.
+</ResponseField>
+
+<ResponseField name="data.status" type="string">
+  The new status.
+</ResponseField>
+
+<ResponseField name="data.listingUrl" type="string | null">
+  The public page on okasie.be when the new status is `active`; `null` otherwise.
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X POST "https://www.okasie.be/api/external/v1/listings/DV-123456/status" \
+  -H "Authorization: Bearer YOUR_API_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"status": "pending"}'
+```
+
+```javascript Node.js
+const response = await fetch(
+  "https://www.okasie.be/api/external/v1/listings/DV-123456/status",
+  {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.PARTNER_SECRET}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ status: "pending" }),
+  }
+);
+console.log(await response.json());
+```
+
+```python Python
+import os
+import requests
+
+response = requests.post(
+    "https://www.okasie.be/api/external/v1/listings/DV-123456/status",
+    json={"status": "pending"},
+    headers={"Authorization": f"Bearer {os.getenv('PARTNER_SECRET')}"},
+)
+print(response.json())
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200 active
+{
+  "data": {
+    "listingId": "0c52cae7-bcaa-4b37-be0d-1b78c92c5225",
+    "externalReference": "DV-123456",
+    "status": "active",
+    "listingUrl": "https://www.okasie.be/aanbod/volkswagen-golf-1-5-tsi-life--0c52cae7-bcaa-4b37-be0d-1b78c92c5225"
+  }
+}
+```
+
+```json 200 pending
+{
+  "data": {
+    "listingId": "0c52cae7-bcaa-4b37-be0d-1b78c92c5225",
+    "externalReference": "DV-123456",
+    "status": "pending",
+    "listingUrl": null
+  }
+}
+```
+
+```json 422
+{
+  "error": {
+    "code": "VALIDATION_FAILED",
+    "message": "Payload validation failed",
+    "issues": [
+      {"path": "status", "message": "Invalid enum value. Expected 'active' | 'pending' | 'sold' | 'draft', received 'online'", "code": "invalid_enum_value"}
+    ]
+  }
+}
+```
+</ResponseExample>
+
+## Errors
+
+| Status | Code | When |
+|--------|------|------|
+| 401 | `UNAUTHORIZED` | Missing or unknown API key, or the key lacks `write:listings` |
+| 429 | `RATE_LIMITED` | Rate limit reached; the body has `retryAt` |
+| 400 | `INVALID_REFERENCE` | The path reference is empty |
+| 400 | `INVALID_JSON` | The body is not valid JSON |
+| 400 | `INVALID_BODY` | The body is not a JSON object |
+| 422 | `VALIDATION_FAILED` | `status` is missing or not one of the four values |
+| 404 | `NOT_FOUND` | Your key has no listing with this reference |
+| 403 | `PROFILE_FORBIDDEN` | The listing belongs to a dealer that is no longer linked to your key |
+| 500 | `FETCH_FAILED` | Okasie could not read the listing; retry later |
+| 500 | `UPDATE_FAILED` | The status was not changed. This is also returned when `active` is refused because the dealer's plan is full or missing; the `message` then contains `listing_limit_reached` or `dealer_plan_required` |

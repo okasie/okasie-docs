@@ -1,0 +1,54 @@
+---
+title: Introductie
+description: "Welkom bij de Okasie Partner API documentatie"
+---
+
+# Welkom bij de Okasie Partner API
+
+Okasie is het toonaangevende Belgische platform voor tweedehands voertuigen. Onze Partner API stelt u in staat om uw voertuiginventaris te synchroniseren met het Okasie-platform, waardoor uw aanbod direct zichtbaar wordt voor kopers in heel België.
+
+<CardGroup cols={2}>
+  <Card title="Snel aan de slag" icon="rocket" href="/nl/quickstart">
+    Doe uw eerste API-aanroep in minder dan 5 minuten
+  </Card>
+  <Card title="Authenticatie" icon="lock" href="/nl/authentication">
+    Leer hoe u veilig authenticatie met de API kunt uitvoeren
+  </Card>
+  <Card title="API Referentie" icon="code" href="/api-reference/overview">
+    Bekijk alle beschikbare endpoints
+  </Card>
+  <Card title="Foutcodes" icon="triangle-exclamation" href="/nl/errors">
+    Begrijp API-foutcodes en oplossingen
+  </Card>
+</CardGroup>
+
+## Wat kunt u doen?
+
+De Okasie Partner API ondersteunt:
+
+- **Advertenties aanmaken/bijwerken** - Eén `PUT` per wagen, met uw eigen referentie
+- **Advertenties offline halen** - Wanneer een wagen verkocht of ingetrokken is
+- **Advertenties ophalen** - Bekijk de advertenties van de dealers die uw sleutel bereikt
+- **Bulk operaties** - Upsert tot 100 advertenties per aanvraag
+- **Locaties opvragen** - Bekijk de dealers die Okasie aan uw sleutel koppelde
+
+## API Versioning
+
+De huidige API-versie is **v1**. Alle endpoints beginnen met:
+
+```
+https://www.okasie.be/api/external/v1/
+```
+
+<Note>
+  API-toegang vereist een partneraccount. Neem contact op met [info@okasie.be](mailto:info@okasie.be) om toegang aan te vragen.
+</Note>
+
+## Snelle links
+
+| Onderwerp | Beschrijving |
+|-----------|--------------|
+| [Quickstart](/nl/quickstart) | Stapsgewijze handleiding om te beginnen |
+| [Authenticatie](/nl/authentication) | API-sleutels en beveiligingsrichtlijnen |
+| [Rate Limiting](/rate-limiting) | Limieten en best practices |
+| [Foutcodes](/nl/errors) | Complete lijst met foutcodes |

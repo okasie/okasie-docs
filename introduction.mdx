@@ -1,0 +1,71 @@
+---
+title: Introduction
+description: "Welcome to the Okasie Partner API documentation"
+---
+
+# Welcome to Okasie Partner API
+
+The Okasie Partner API enables external platforms and partners to integrate with Belgium's leading used car marketplace.
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get up and running in 5 minutes
+  </Card>
+  <Card title="Authentication" icon="key" href="/authentication">
+    Learn how to authenticate your requests
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/overview">
+    Explore all available endpoints
+  </Card>
+  <Card title="Rate Limits" icon="gauge" href="/rate-limiting">
+    Understand rate limiting and best practices
+  </Card>
+</CardGroup>
+
+## What is Okasie?
+
+Okasie is a Belgian used car marketplace connecting dealers with buyers. With the Partner API a stock system publishes the cars of the dealers it serves:
+
+- **Publish and update cars** - one `PUT` per car, identified by your own reference
+- **Take cars offline** - when they are sold or withdrawn
+- **Send in bulk** - up to 100 cars per request
+- **Read back** - the listings and dealer locations your key can reach
+
+A key can only publish for the dealers Okasie linked to it. See [Dealer access](/authentication#dealer-access).
+
+## Base URL
+
+All API requests should be made to:
+
+```
+https://www.okasie.be/api/external/v1
+```
+
+## API Version
+
+This documentation covers version 1 of the API (`/api/external/v1`). Breaking changes will be communicated in advance.
+
+## Support
+
+<CardGroup cols={2}>
+  <Card title="Email Support" icon="envelope" href="mailto:info@okasie.be">
+    info@okasie.be
+  </Card>
+  <Card title="Request Access" icon="user-plus" href="mailto:info@okasie.be?subject=Partner%20API%20Access%20Request">
+    Contact us to get your API credentials
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<Steps>
+  <Step title="Get API Access">
+    Contact info@okasie.be to request your partner API secret and write access
+  </Step>
+  <Step title="Read the Quickstart">
+    Follow our [quickstart guide](/quickstart) to make your first API call
+  </Step>
+  <Step title="Explore the API">
+    Browse the [API reference](/api-reference/overview) for detailed endpoint documentation
+  </Step>
+</Steps>

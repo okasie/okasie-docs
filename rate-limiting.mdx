@@ -1,0 +1,70 @@
+---
+title: Rate Limiting
+description: "Request limits per API key"
+---
+
+## Limit
+
+| | |
+|---|---|
+| Requests | **120 per minute** per API key (unless Okasie agreed another limit with you) |
+| Window | Fixed, per clock minute (UTC); the counter starts again at the start of every minute |
+| Counted | `GET /listings`, every write endpoint |
+| Not counted | `GET /locations` and `GET /locations/{id}/listings` |
+
+Reads and writes share one counter. A [bulk request](/api-reference/listings/bulk-upsert) counts as **one** request, however many items it holds, so use it to send many cars. Requests refused with `401` are not counted.
+
+Need more? Contact [info@okasie.be](mailto:info@okasie.be).
+
+## Headers
+
+Counted endpoints return these headers, on success and on errors after authentication:
+
+| Header | Meaning |
+|--------|---------|
+| `X-RateLimit-Limit` | Requests allowed per window |
+| `X-RateLimit-Remaining` | Requests left in the current window |
+| `X-RateLimit-Reset` | Unix time (seconds) when the window ends |
+| `Retry-After` | Only on `429`: seconds until the window ends |
+
+```http
+X-RateLimit-Limit: 120
+X-RateLimit-Remaining: 87
+X-RateLimit-Reset: 1793872860
+```
+
+## When you hit the limit
+
+The request is refused with HTTP `429` and nothing is done. Wait for `Retry-After` seconds (or until `X-RateLimit-Reset`) and send it again.
+
+On the write endpoints the body is:
+
+```json
+{
+  "error": {
+    "code": "RATE_LIMITED",
+    "message": "Too many requests",
+    "retryAt": "2026-11-06T10:15:00.000Z"
+  }
+}
+```
+
+`retryAt` is the end of the window as an ISO 8601 time. On `GET /listings` the body is `{"error": "Too many requests"}`.
+
+```javascript
+async function callWithRetry(url, options, maxAttempts = 5) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const response = await fetch(url, options);
+    if (response.status !== 429) return response;
+    const waitSeconds = Number(response.headers.get("Retry-After")) || 2 ** attempt;
+    await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
+  }
+  throw new Error("Still rate limited");
+}
+```
+
+## Good practice
+
+- Send a car only when it changed, and use [bulk-upsert](/api-reference/listings/bulk-upsert) for large batches.
+- Watch `X-RateLimit-Remaining` and slow down when it gets low.
+- For a full reconciliation read with `pageSize=200`.

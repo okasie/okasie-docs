@@ -1,0 +1,242 @@
+---
+title: List Listings
+api: GET /api/external/v1/listings
+description: "Read the listings of the dealers your key can reach"
+---
+
+Returns the listings of the dealers your key can reach, newest change first. This includes listings those dealers created in other ways (in the Okasie dashboard or through another feed): your own listings are the ones with your `externalReference` and the `externalProvider` value you see on them.
+
+Any valid API key can call this endpoint; no write scope is needed.
+
+## Query parameters
+
+Invalid values do not cause an error: they fall back to the default or are ignored.
+
+<ParamField query="page" type="integer" default="1">
+  Page number, starting at 1. Also accepted as `page_number`. A page past the end returns an empty `data` array.
+</ParamField>
+
+<ParamField query="pageSize" type="integer" default="50">
+  Items per page, 1 to 200. Larger values are lowered to 200. Also accepted as `page_size` and `limit`.
+</ParamField>
+
+<ParamField query="status" type="string" default="active">
+  `active`, `pending`, `sold`, `draft`, or `all` for every status. Any other value (also `inactive`) falls back to `active`. Listings that were deleted have status `inactive` and only appear with `all`.
+</ParamField>
+
+<ParamField query="updatedSince" type="string">
+  Only listings changed at or after this moment, as an ISO 8601 date-time, for example `2026-11-01T00:00:00Z`. Also accepted as `updated_since`. An unparseable value is ignored.
+</ParamField>
+
+<ParamField query="locationCode" type="string">
+  Only the listings of the dealer with this Dealer ID, for example `OK-00148` (exact match first, then case-insensitive). Also accepted as `location_code`.
+</ParamField>
+
+<ParamField query="dealerId" type="string">
+  Only the listings of this dealer profile UUID. Also accepted as `locationId`, `profileId` and `userId`. A value that is not a UUID is ignored.
+</ParamField>
+
+<ParamField query="parentDealerId" type="string">
+  Only the listings of this dealer UUID and all its child locations. Also accepted as `parentId` and `companyId`. A value that is not a UUID is ignored.
+</ParamField>
+
+A filter for a dealer outside your access returns an empty list.
+
+## Response
+
+HTTP 200 with the [rate limit headers](/rate-limiting).
+
+<ResponseField name="data" type="object[]">
+  The listings. Fields without a value are `null`.
+
+  <Expandable title="listing properties">
+    <ResponseField name="id" type="string">Okasie listing UUID.</ResponseField>
+    <ResponseField name="slug" type="string">URL slug of the listing.</ResponseField>
+    <ResponseField name="listingUrl" type="string">Public page of the listing. Set for every status, but the page is only public while `status` is `active`.</ResponseField>
+    <ResponseField name="dealerProfileId" type="string">Dealer profile UUID.</ResponseField>
+    <ResponseField name="externalReference" type="string | null">The reference of the partner that created it, `null` for listings created in the dashboard.</ResponseField>
+    <ResponseField name="externalProvider" type="string | null">Identifies the partner key or feed that created the listing.</ResponseField>
+    <ResponseField name="title" type="string">Title.</ResponseField>
+    <ResponseField name="description" type="string | null">Description.</ResponseField>
+    <ResponseField name="status" type="string">`active`, `pending`, `sold`, `draft`, or `inactive` (deleted).</ResponseField>
+    <ResponseField name="price" type="number | null">Asking price.</ResponseField>
+    <ResponseField name="currency" type="string">Always `EUR`.</ResponseField>
+    <ResponseField name="brand" type="string | null">Make.</ResponseField>
+    <ResponseField name="model" type="string | null">Model.</ResponseField>
+    <ResponseField name="variant" type="string | null">Version or trim (`variant` or `customType` on input).</ResponseField>
+    <ResponseField name="year" type="integer | null">Model year.</ResponseField>
+    <ResponseField name="firstRegistration" type="string | null">First registration, as sent.</ResponseField>
+    <ResponseField name="mileage" type="integer | null">Odometer reading in km.</ResponseField>
+    <ResponseField name="fuelType" type="string | null">Okasie label, for example `Benzine`.</ResponseField>
+    <ResponseField name="transmission" type="string | null">Okasie label, for example `Automaat`.</ResponseField>
+    <ResponseField name="bodyType" type="string | null">Okasie label, for example `Hatchback`.</ResponseField>
+    <ResponseField name="color" type="string | null">Exterior colour.</ResponseField>
+    <ResponseField name="doors" type="integer | null">Doors.</ResponseField>
+    <ResponseField name="seats" type="integer | null">Seats.</ResponseField>
+    <ResponseField name="powerKw" type="integer | null">Power in whole kW.</ResponseField>
+    <ResponseField name="engine" type="string | null">Engine displacement in litres.</ResponseField>
+    <ResponseField name="co2Emission" type="integer | null">CO2 in g/km.</ResponseField>
+    <ResponseField name="co2Type" type="string | null">CO2 test cycle.</ResponseField>
+    <ResponseField name="emissionClass" type="string | null">Euro norm.</ResponseField>
+    <ResponseField name="fuelConsumption" type="number | null">l/100 km.</ResponseField>
+    <ResponseField name="driveType" type="string | null">Drive type.</ResponseField>
+    <ResponseField name="gears" type="integer | null">Gears.</ResponseField>
+    <ResponseField name="interiorColor" type="string | null">Interior colour.</ResponseField>
+    <ResponseField name="interiorMaterial" type="string | null">Interior material.</ResponseField>
+    <ResponseField name="paintType" type="string | null">Paint type.</ResponseField>
+    <ResponseField name="weight" type="integer | null">Weight in kg.</ResponseField>
+    <ResponseField name="previousOwners" type="integer | null">Previous owners.</ResponseField>
+    <ResponseField name="serviceHistory" type="boolean | null">Maintenance history available.</ResponseField>
+    <ResponseField name="warranty" type="boolean | null">Sold with warranty.</ResponseField>
+    <ResponseField name="warrantyMonths" type="integer | null">Warranty in months.</ResponseField>
+    <ResponseField name="vehicleType" type="string | null">VAT regime, for example `margin`.</ResponseField>
+    <ResponseField name="conditionTags" type="string[] | null">Condition tags (`conditionTags` or `condition` on input).</ResponseField>
+    <ResponseField name="vin" type="string | null">Chassis number.</ResponseField>
+    <ResponseField name="carPassUrl" type="string | null">Car-Pass URL or 11-digit certificate number.</ResponseField>
+    <ResponseField name="location" type="object">`postalCode`, `city`, `province`, `latitude`, `longitude`.</ResponseField>
+    <ResponseField name="images" type="object[]">Photos as hosted by Okasie, sorted by position: `url`, `position`.</ResponseField>
+    <ResponseField name="mainImageUrl" type="string | null">URL of the first photo.</ResponseField>
+    <ResponseField name="features" type="object[]">`category`, `name`.</ResponseField>
+    <ResponseField name="dealer" type="object">The dealer: `id`, `parentId`, `locationCode` (Dealer ID), `companyName`, `fullName`, `displayName`, `email`, `phone`, `address`, `postalCode`, `city`, `province`, `logoUrl`, `metadata`, and `parent` (`id`, `locationCode`, `companyName`, `fullName`, `displayName`) or `null`.</ResponseField>
+    <ResponseField name="createdAt" type="string">ISO 8601.</ResponseField>
+    <ResponseField name="updatedAt" type="string">ISO 8601. Changes on every write by anyone, also by Okasie.</ResponseField>
+    <ResponseField name="soldAt" type="string | null">ISO 8601, set while the listing is sold.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="pagination" type="object">
+  `page`, `pageSize`, `totalItems`, `totalPages`.
+</ResponseField>
+
+<ResponseField name="meta" type="object">
+  `partner` (`id`, `name`, `source`, `access`), `filters` (the filters as you sent them) and `profileScope` (`allowed`, `effective` and `filters`: the dealer UUIDs the query was limited to). See [Dealer access](/authentication#dealer-access) for `access`.
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl "https://www.okasie.be/api/external/v1/listings?locationCode=OK-00148&status=all&pageSize=200" \
+  -H "Authorization: Bearer YOUR_API_SECRET"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "data": [
+    {
+      "id": "0c52cae7-bcaa-4b37-be0d-1b78c92c5225",
+      "slug": "volkswagen-golf-1-5-tsi-life--0c52cae7-bcaa-4b37-be0d-1b78c92c5225",
+      "listingUrl": "https://www.okasie.be/aanbod/volkswagen-golf-1-5-tsi-life--0c52cae7-bcaa-4b37-be0d-1b78c92c5225",
+      "dealerProfileId": "7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f",
+      "externalReference": "DV-123456",
+      "externalProvider": "3a3a3a3a-3a3a-43a3-a3a3-3a3a3a3a3a3a",
+      "title": "Volkswagen Golf 1.5 TSI Life",
+      "description": "First owner, full dealer maintenance.",
+      "status": "active",
+      "price": 21950,
+      "currency": "EUR",
+      "brand": "Volkswagen",
+      "model": "Golf",
+      "year": 2022,
+      "mileage": 38500,
+      "fuelType": "Benzine",
+      "transmission": "Automaat",
+      "bodyType": "Hatchback",
+      "color": "Grijs",
+      "doors": 5,
+      "seats": 5,
+      "powerKw": 110,
+      "co2Emission": 129,
+      "emissionClass": "Euro 6d",
+      "firstRegistration": "2022-03-15",
+      "driveType": "FWD",
+      "gears": 7,
+      "interiorColor": "Zwart",
+      "interiorMaterial": "Stof",
+      "weight": 1310,
+      "previousOwners": 1,
+      "serviceHistory": true,
+      "warranty": true,
+      "warrantyMonths": 12,
+      "co2Type": "WLTP",
+      "paintType": "Metallic",
+      "fuelConsumption": 5.7,
+      "variant": "Life",
+      "vehicleType": "margin",
+      "conditionTags": ["Gebruikt"],
+      "engine": "1.5",
+      "vin": "WVWZZZCDZNW000000",
+      "carPassUrl": null,
+      "location": {
+        "postalCode": "9000",
+        "city": "Gent",
+        "province": "Oost-Vlaanderen",
+        "latitude": 51.0543,
+        "longitude": 3.7174
+      },
+      "images": [
+        {"url": "https://<okasie-storage>/listing-images/imports/.../0-1a2b3c4d5e6f7a8b.jpeg", "position": 0}
+      ],
+      "mainImageUrl": "https://<okasie-storage>/listing-images/imports/.../0-1a2b3c4d5e6f7a8b.jpeg",
+      "features": [{"category": "comfort", "name": "Automatische airco"}],
+      "dealer": {
+        "id": "7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f",
+        "parentId": null,
+        "locationCode": "OK-00148",
+        "companyName": "Example Cars BV",
+        "fullName": null,
+        "displayName": "Example Cars BV",
+        "email": "sales@example.com",
+        "phone": "+32 9 000 00 00",
+        "address": "Voorbeeldstraat 1",
+        "postalCode": "9000",
+        "city": "Gent",
+        "province": "Oost-Vlaanderen",
+        "logoUrl": null,
+        "metadata": {},
+        "parent": null
+      },
+      "createdAt": "2026-11-01T09:12:01.000Z",
+      "updatedAt": "2026-11-05T14:30:00.000Z",
+      "soldAt": null
+    }
+  ],
+  "pagination": {"page": 1, "pageSize": 200, "totalItems": 1, "totalPages": 1},
+  "meta": {
+    "partner": {
+      "id": "your-partner-name",
+      "name": "your-partner-name",
+      "source": "database",
+      "access": {
+        "scope": "restricted",
+        "rootProfileIds": ["7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f"],
+        "profileIds": ["7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f"]
+      }
+    },
+    "filters": {
+      "status": "all",
+      "updatedSince": null,
+      "dealerId": null,
+      "locationId": null,
+      "parentDealerId": null,
+      "locationCode": "OK-00148"
+    },
+    "profileScope": {
+      "allowed": ["7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f"],
+      "effective": ["7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f"],
+      "filters": {"dealerId": null, "parentId": null, "locationCode": "OK-00148"}
+    }
+  }
+}
+```
+</ResponseExample>
+
+## Errors
+
+The read endpoints return a plain error body: `{"error": "<message>"}`.
+
+| Status | Body | When |
+|--------|------|------|
+| 401 | `{"error": "Unauthorized"}` | Missing or unknown API key |
+| 429 | `{"error": "Too many requests"}` | Rate limit reached; see the `Retry-After` header |
+| 500 | `{"error": "Failed to load listings"}` | Okasie could not read the listings; retry later |

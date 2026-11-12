@@ -1,0 +1,104 @@
+---
+title: Delete Listing
+api: DELETE /api/external/v1/listings/{externalReference}
+description: "Take a listing offline when the car is sold or withdrawn"
+---
+
+Use this call when a car is sold or withdrawn. It is a soft delete: the listing gets status `sold` and a sold date, and Okasie takes it offline about an hour later (60 to 75 minutes). After that its status reads `inactive` in [List Listings](/api-reference/listings/list) (with `status=all`). The listing is not removed from Okasie's database.
+
+<Note>
+  Requires the `write:listings` scope.
+</Note>
+
+To publish the same car again later, send it with [Create/Update Listing](/api-reference/listings/upsert) and `status: "active"`, using the same reference.
+
+The call is idempotent: deleting a listing that is already sold or offline returns the same response. Each call sets the sold date to the current time.
+
+## Path parameter
+
+<ParamField path="externalReference" type="string" required>
+  The reference you used when creating the listing.
+</ParamField>
+
+No request body is needed.
+
+## Response
+
+HTTP 200 with the [rate limit headers](/rate-limiting).
+
+<ResponseField name="data.listingId" type="string">
+  Okasie listing UUID.
+</ResponseField>
+
+<ResponseField name="data.externalReference" type="string">
+  Your reference.
+</ResponseField>
+
+<ResponseField name="data.status" type="string">
+  Always `sold`.
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl -X DELETE "https://www.okasie.be/api/external/v1/listings/DV-123456" \
+  -H "Authorization: Bearer YOUR_API_SECRET"
+```
+
+```javascript Node.js
+const response = await fetch(
+  "https://www.okasie.be/api/external/v1/listings/DV-123456",
+  {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${process.env.PARTNER_SECRET}` },
+  }
+);
+console.log(await response.json());
+```
+
+```python Python
+import os
+import requests
+
+response = requests.delete(
+    "https://www.okasie.be/api/external/v1/listings/DV-123456",
+    headers={"Authorization": f"Bearer {os.getenv('PARTNER_SECRET')}"},
+)
+print(response.json())
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "data": {
+    "listingId": "0c52cae7-bcaa-4b37-be0d-1b78c92c5225",
+    "externalReference": "DV-123456",
+    "status": "sold"
+  }
+}
+```
+
+```json 404
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Listing not found for this partner"
+  }
+}
+```
+</ResponseExample>
+
+## Errors
+
+| Status | Code | When |
+|--------|------|------|
+| 401 | `UNAUTHORIZED` | Missing or unknown API key, or the key lacks `write:listings` |
+| 429 | `RATE_LIMITED` | Rate limit reached; the body has `retryAt` |
+| 400 | `INVALID_REFERENCE` | The path reference is empty |
+| 404 | `NOT_FOUND` | Your key has no listing with this reference |
+| 403 | `PROFILE_FORBIDDEN` | The listing belongs to a dealer that is no longer linked to your key |
+| 500 | `FETCH_FAILED` / `UPDATE_FAILED` | Okasie could not read or update the listing; retry later |
+
+<Warning>
+  When a dealer stops publishing on Okasie, delete its listings **before** Okasie removes the dealer from your key. Afterwards your key can no longer change them (`403 PROFILE_FORBIDDEN`).
+</Warning>

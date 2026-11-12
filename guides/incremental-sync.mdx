@@ -1,0 +1,88 @@
+---
+title: Incremental Sync
+description: "Keeping Okasie in line with your stock"
+---
+
+Your system is the source of truth. Push every change to Okasie, and reconcile now and then to repair anything that went wrong.
+
+## Push changes
+
+| Event in your system | Call |
+|----------------------|------|
+| New car | [`PUT /listings/{externalReference}`](/api-reference/listings/upsert) with `status: "active"` |
+| Any change (price, photos, text, options) | `PUT` with the **complete** car, same reference |
+| Car reserved, or temporarily hidden | `PUT` with `status: "pending"` or `"draft"`, or [`POST /listings/{externalReference}/status`](/api-reference/listings/status) |
+| Car sold or withdrawn | [`DELETE /listings/{externalReference}`](/api-reference/listings/delete) |
+| Car back on sale | `PUT` with `status: "active"`, same reference |
+
+Rules that keep the sync simple:
+
+- **One reference per car, for good.** Use your own stable advertisement id as `externalReference`. Okasie finds the listing by that reference; it never has to know Okasie's `listingId`.
+- **Always send the whole car.** `PUT` is a full replacement: a field you leave out is cleared.
+- **Leave `images` out when the photos did not change**, to keep the current ones and avoid downloading them again. Send the full list when any photo changed.
+- **Use bulk for volume.** [Bulk upsert](/api-reference/listings/bulk-upsert) sends up to 100 cars as one request against the rate limit.
+- **Store `listingId` and `listingUrl`** from the response if you want to show the dealer where the car is online. `listingUrl` is only set while the car is `active`.
+
+```javascript
+async function pushCar(car) {
+  const response = await fetch(
+    `https://www.okasie.be/api/external/v1/listings/${encodeURIComponent(car.reference)}`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${process.env.PARTNER_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(toOkasieListing(car)),
+    }
+  );
+  const body = await response.json();
+  if (!response.ok) throw new Error(`${body.error.code}: ${body.error.message}`);
+  return body.data; // { listingId, externalReference, status, listingUrl, created, warnings? }
+}
+```
+
+## Reconcile
+
+Once a day, compare what Okasie has with your stock. Read per dealer with [List Listings](/api-reference/listings/list), using `status=all` so drafts and deleted listings are included:
+
+```javascript
+async function fetchDealerListings(dealerId) {
+  const listings = [];
+  for (let page = 1; ; page++) {
+    const params = new URLSearchParams({ locationCode: dealerId, status: "all", page, pageSize: 200 });
+    const response = await fetch(`https://www.okasie.be/api/external/v1/listings?${params}`, {
+      headers: { Authorization: `Bearer ${process.env.PARTNER_SECRET}` },
+    });
+    const { data, pagination } = await response.json();
+    listings.push(...data);
+    if (page >= pagination.totalPages) break;
+  }
+  return listings;
+}
+```
+
+The result also contains listings the dealer created in other ways. Keep only your own: those whose `externalReference` is one of yours and whose `externalProvider` matches the value on listings you created. Then:
+
+- a car in your stock that is missing on Okasie, or differs: `PUT` it;
+- a listing that is `active` on Okasie but no longer in your stock: `DELETE` it.
+
+Deleted listings come back with status `inactive`.
+
+## Reading changes
+
+`updatedSince` returns the listings changed at or after a moment, newest first. `updatedAt` changes on every write, also by the dealer in the Okasie dashboard and by Okasie itself (for example when a sold car goes offline), so use it to notice changes, not as proof that your own call arrived; the response of your write call is that proof.
+
+```bash
+curl "https://www.okasie.be/api/external/v1/listings?updatedSince=2026-11-05T00:00:00Z&status=all" \
+  -H "Authorization: Bearer YOUR_API_SECRET"
+```
+
+## Errors and retries
+
+- Writes are safe to repeat: the same `PUT` twice gives the same listing.
+- Retry `429` after `Retry-After` and `500` with increasing delays.
+- Do not retry `400`, `403`, `409` and `422` unchanged; log the `code` and `message`, and show them to the dealer where it helps (for example `LISTING_LIMIT_REACHED`: the dealer's plan is full).
+- Check `warnings.skippedImages` and send the car again when the photos are reachable.
+
+See [Error Handling](/errors) for every code.

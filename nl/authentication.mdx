@@ -1,0 +1,105 @@
+---
+title: Authenticatie
+description: "Beveilig uw integratie met de Okasie Partner API"
+---
+
+De Okasie Partner API gebruikt API-sleutels voor authenticatie. Elke partner krijgt een unieke geheime sleutel die toegang verleent tot hun toegewezen resources.
+
+<Warning>
+  Deel uw API-sleutel nooit in clientcode, Git-repositories of via onbeveiligde kanalen.
+</Warning>
+
+## Authenticatiemethoden
+
+### Bearer Token (Aanbevolen)
+
+Stuur uw API-sleutel in de `Authorization` header:
+
+```bash
+curl -X GET "https://www.okasie.be/api/external/v1/listings" \
+  -H "Authorization: Bearer UW_API_GEHEIM"
+```
+
+### X-API-Key Header
+
+Alternatief kunt u de `X-API-Key` header gebruiken. Als beide headers aanwezig zijn, wordt `X-API-Key` gebruikt:
+
+```bash
+curl -X GET "https://www.okasie.be/api/external/v1/listings" \
+  -H "X-API-Key: UW_API_GEHEIM"
+```
+
+## Toegangsbereiken (Scopes)
+
+API-sleutels hebben specifieke toegangsbereiken die bepalen welke operaties u kunt uitvoeren:
+
+| Scope | Beschrijving |
+|-------|--------------|
+| `read:listings` | Advertenties bekijken |
+| `read:locations` | Dealerlocaties bekijken |
+| `write:listings` | Advertenties aanmaken, bijwerken en verwijderen |
+
+<Note>
+  Schrijftoegang (`write:listings`) is standaard uitgeschakeld. Neem contact op met [info@okasie.be](mailto:info@okasie.be) om schrijftoegang aan te vragen. De leesendpoints aanvaarden elke geldige sleutel; een schrijfoperatie zonder `write:listings` geeft `401 UNAUTHORIZED`.
+</Note>
+
+## Beveiligingspraktijken
+
+<CardGroup cols={2}>
+  <Card title="Gebruik omgevingsvariabelen" icon="leaf">
+    Sla API-sleutels nooit op in code
+    ```bash
+    export OKASIE_API_KEY="uw_geheim"
+    ```
+  </Card>
+  <Card title="Alleen HTTPS" icon="lock">
+    Alle API-aanroepen moeten HTTPS gebruiken
+  </Card>
+  <Card title="Roteer sleutels regelmatig" icon="rotate">
+    Vraag periodiek nieuwe sleutels aan en deactiveer oude
+  </Card>
+  <Card title="Controleer audit logs" icon="list-check">
+    Controleer API-gebruik voor ongeautoriseerde toegang
+  </Card>
+</CardGroup>
+
+## Profieltoegangscontrole
+
+Okasie koppelt dealers aan uw API-sleutel. U kunt enkel advertenties lezen en schrijven van die dealers en van hun onderliggende vestigingen. Schrijven voor een andere dealer geeft `403 PROFILE_FORBIDDEN`.
+
+### Een dealer laten koppelen
+
+1. De dealer vraagt u om zijn aanbod op Okasie te publiceren. De dealer heeft een Okasie-account met een pakket nodig.
+2. U bezorgt Okasie de **Dealer ID** van de dealer, bijvoorbeeld `OK-00148`. De dealer vindt die in het Okasie-dashboard onder **Integraties**.
+3. Zodra de dealer en Okasie akkoord zijn, koppelt Okasie de dealer aan uw sleutel (actief binnen een minuut).
+4. U stuurt de wagens met `dealerLocationCode: "OK-00148"`.
+
+Om te stoppen: verwijder eerst de advertenties van de dealer, en vraag daarna Okasie om de koppeling te verwijderen.
+
+Sommige sleutels bedienen enkel dealers die Okasie goedkeurde. Zo'n sleutel bereikt geen enkele dealer zolang er niets gekoppeld is, en kan zelf geen dealers koppelen.
+
+### Hiërarchische toegang
+
+Als u toegang heeft tot een hoofddealer, heeft u automatisch toegang tot alle onderliggende locaties:
+
+```
+Hoofdbedrijf (uw toegang)
+├── Vestiging Antwerpen
+├── Vestiging Gent
+└── Vestiging Brussel
+```
+
+## Sleutelrotatie
+
+Neem contact op met [info@okasie.be](mailto:info@okasie.be) om een nieuwe API-sleutel aan te vragen.
+
+<Tip>
+  Sla API-sleutels op in uw geheimenbeheer (bijv. AWS Secrets Manager, HashiCorp Vault) voor productieomgevingen.
+</Tip>
+
+## Foutafhandeling
+
+| HTTP Status | Foutcode | Beschrijving |
+|-------------|----------|--------------|
+| 401 | `UNAUTHORIZED` | Ongeldige of ontbrekende API-sleutel, of een schrijfoperatie zonder scope `write:listings` |
+| 403 | `PROFILE_FORBIDDEN` | De dealer is niet aan uw sleutel gekoppeld |

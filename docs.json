@@ -1,72 +1,97 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Mintlify Starter Kit",
-  "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+  "name": "Okasie Partner API",
+  "logo": {
+    "dark": "/logo/dark.svg",
+    "light": "/logo/light.svg"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "/favicon.png",
+  "colors": {
+    "primary": "#FF5001",
+    "light": "#FF7A3E",
+    "dark": "#FF5001"
+  },
+  "topbarLinks": [
+    {
+      "name": "Support",
+      "url": "mailto:info@okasie.be"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Okasie.be",
+    "url": "https://www.okasie.be"
+  },
   "navigation": {
-    "pages": [
+    "tabs": [
       {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "quickstart"
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "authentication"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "rate-limiting",
+              "errors",
+              "guides/incremental-sync",
+              "guides/image-handling"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api-reference/overview"
+            ]
+          },
+          {
+            "group": "Listings",
+            "pages": [
+              "api-reference/listings/list",
+              "api-reference/listings/upsert",
+              "api-reference/listings/bulk-upsert",
+              "api-reference/listings/delete",
+              "api-reference/listings/status"
+            ]
+          },
+          {
+            "group": "Locations",
+            "pages": [
+              "api-reference/locations/list",
+              "api-reference/locations/listings"
+            ]
+          },
+          {
+            "group": "Brands",
+            "pages": [
+              "api-reference/brands/list"
+            ]
+          }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:support@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "chatgpt",
-      "claude",
-      "perplexity",
-      "mcp",
-      "cursor",
-      "vscode"
     ]
   },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+  "footerSocials": {
+    "website": "https://www.okasie.be"
+  },
+  "api": {
+    "openapi": "openapi.yaml",
+    "mdx": {
+      "server": "https://www.okasie.be",
+      "auth": {
+        "method": "bearer"
+      }
     }
   }
 }

@@ -1,47 +1,163 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: Quickstart
+description: "Publish your first car in a few minutes"
 ---
-
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
 
 ## Prerequisites
 
-Before you begin, you must have:
+<Check>An API secret with the `write:listings` scope (contact info@okasie.be)</Check>
+<Check>At least one dealer linked to your key by Okasie, and its Dealer ID, for example `OK-00148` (see [Dealer access](/authentication#dealer-access))</Check>
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
+## Step 1: Check your key and dealers
 
-## Get started
+```bash
+curl "https://www.okasie.be/api/external/v1/locations" \
+  -H "Authorization: Bearer YOUR_API_SECRET"
+```
 
-<Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+A `200` response with the dealer in `data` (its Dealer ID in `locationCode`) means you are ready. An empty `data` array means no dealer is linked to your key yet; `401` means the secret is wrong.
 
-    ```bash
-    npm install your-package
-    ```
-  </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+```json
+{
+  "data": [
+    {
+      "id": "7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f",
+      "locationCode": "OK-00148",
+      "displayName": "Example Cars BV",
+      "city": "Gent",
+      "stats": {"activeListings": 0, "totalListings": 0, "avgActivePrevMonth": null}
+    }
+  ],
+  "meta": {"total": 1}
+}
+```
 
-    ```bash
-    your-cli init
-    ```
-  </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+## Step 2: Publish a car
 
-    ```bash
-    your-cli start
-    ```
-  </Step>
-</Steps>
+Choose your own reference for the car (here `DV-123456`) and `PUT` it. `title`, the dealer, `postalCode` and `city` are always required; `price` is required for an active car.
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+<CodeGroup>
+```bash cURL
+curl -X PUT "https://www.okasie.be/api/external/v1/listings/DV-123456" \
+  -H "Authorization: Bearer YOUR_API_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dealerLocationCode": "OK-00148",
+    "status": "active",
+    "title": "Volkswagen Golf 1.5 TSI Life",
+    "price": 21950,
+    "brand": "Volkswagen",
+    "model": "Golf",
+    "year": 2022,
+    "mileage": 38500,
+    "fuelType": "Benzine",
+    "transmission": "Automaat",
+    "postalCode": "9000",
+    "city": "Gent",
+    "images": ["https://images.example.com/dv/123456/1.jpg"]
+  }'
+```
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+```javascript Node.js
+const response = await fetch(
+  "https://www.okasie.be/api/external/v1/listings/DV-123456",
+  {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${process.env.PARTNER_SECRET}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      dealerLocationCode: "OK-00148",
+      status: "active",
+      title: "Volkswagen Golf 1.5 TSI Life",
+      price: 21950,
+      brand: "Volkswagen",
+      model: "Golf",
+      year: 2022,
+      mileage: 38500,
+      fuelType: "Benzine",
+      transmission: "Automaat",
+      postalCode: "9000",
+      city: "Gent",
+      images: ["https://images.example.com/dv/123456/1.jpg"],
+    }),
+  }
+);
+console.log(await response.json());
+```
+
+```python Python
+import os
+import requests
+
+response = requests.put(
+    "https://www.okasie.be/api/external/v1/listings/DV-123456",
+    headers={"Authorization": f"Bearer {os.getenv('PARTNER_SECRET')}"},
+    json={
+        "dealerLocationCode": "OK-00148",
+        "status": "active",
+        "title": "Volkswagen Golf 1.5 TSI Life",
+        "price": 21950,
+        "brand": "Volkswagen",
+        "model": "Golf",
+        "year": 2022,
+        "mileage": 38500,
+        "fuelType": "Benzine",
+        "transmission": "Automaat",
+        "postalCode": "9000",
+        "city": "Gent",
+        "images": ["https://images.example.com/dv/123456/1.jpg"],
+    },
+)
+print(response.json())
+```
+</CodeGroup>
+
+The response is HTTP `200`:
+
+```json
+{
+  "data": {
+    "listingId": "0c52cae7-bcaa-4b37-be0d-1b78c92c5225",
+    "externalReference": "DV-123456",
+    "status": "active",
+    "listingUrl": "https://www.okasie.be/aanbod/volkswagen-golf-1-5-tsi-life--0c52cae7-bcaa-4b37-be0d-1b78c92c5225",
+    "created": true
+  }
+}
+```
+
+`listingUrl` is the car's public page. If a photo could not be downloaded, `warnings.skippedImages` says which and why.
+
+## Step 3: Update it
+
+Send the same `PUT` again with the **complete** car and the changed values. Fields you leave out are cleared, except `images` and `features`, which stay when you leave them out. The response now has `"created": false`.
+
+## Step 4: Take it offline
+
+When the car is sold or withdrawn:
+
+```bash
+curl -X DELETE "https://www.okasie.be/api/external/v1/listings/DV-123456" \
+  -H "Authorization: Bearer YOUR_API_SECRET"
+```
+
+The listing is marked sold and goes offline about an hour later (60 to 75 minutes).
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="All fields" icon="list" href="/api-reference/listings/upsert">
+    Every field with its format and allowed values
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/errors">
+    Every error code
+  </Card>
+  <Card title="Bulk Operations" icon="layer-group" href="/api-reference/listings/bulk-upsert">
+    Up to 100 cars per request
+  </Card>
+  <Card title="Incremental Sync" icon="arrows-rotate" href="/guides/incremental-sync">
+    Keeping Okasie in line with your stock
+  </Card>
+</CardGroup>

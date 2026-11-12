@@ -1,0 +1,116 @@
+---
+title: List Locations
+api: GET /api/external/v1/locations
+description: "The dealers and dealer locations your key can reach"
+---
+
+Returns the dealers (and their child locations) your key can reach, as one flat list sorted by company name and city. Use it to check which dealers Okasie linked to your key and to look up their Dealer ID (`locationCode`) and UUID (`id`). There is no paging.
+
+Any valid API key can call this endpoint. It is not rate limited and returns no rate limit headers.
+
+## Query parameters
+
+<ParamField query="parentId" type="string">
+  Only this dealer UUID (and, with `includeChildren`, its child locations). Also accepted as `parent_id`. A value that is not a UUID is ignored.
+</ParamField>
+
+<ParamField query="includeChildren" type="boolean" default="true">
+  Only used with `parentId`: `true` returns the dealer and all its child locations, `false` only the dealer itself. Accepts `true`/`false`, `1`/`0`, `yes`/`no`.
+</ParamField>
+
+<ParamField query="withCounts" type="boolean" default="true">
+  Fill `stats` with listing counts. With `false`, every count is `0`.
+</ParamField>
+
+<ParamField query="search" type="string">
+  Case-insensitive text match on company name, name, city, province and Dealer ID.
+</ParamField>
+
+## Response
+
+<ResponseField name="data" type="object[]">
+  <Expandable title="location properties">
+    <ResponseField name="id" type="string">Dealer profile UUID; usable as `dealerProfileId`.</ResponseField>
+    <ResponseField name="parentId" type="string | null">UUID of the parent dealer, `null` when there is none.</ResponseField>
+    <ResponseField name="isRoot" type="boolean | null">`true` when Okasie linked this dealer directly to your key, `false` for a child location reached through it (and for every location when your key has no dealer restriction).</ResponseField>
+    <ResponseField name="locationCode" type="string | null">Dealer ID, for example `OK-00148`; usable as `dealerLocationCode`.</ResponseField>
+    <ResponseField name="companyName" type="string | null">Company name.</ResponseField>
+    <ResponseField name="fullName" type="string | null">Name of the account holder.</ResponseField>
+    <ResponseField name="displayName" type="string | null">Company name, else name, else e-mail.</ResponseField>
+    <ResponseField name="email" type="string | null">E-mail.</ResponseField>
+    <ResponseField name="phone" type="string | null">Phone.</ResponseField>
+    <ResponseField name="address" type="string | null">Street address.</ResponseField>
+    <ResponseField name="postalCode" type="string | null">Postal code.</ResponseField>
+    <ResponseField name="city" type="string | null">City.</ResponseField>
+    <ResponseField name="province" type="string | null">Province.</ResponseField>
+    <ResponseField name="logoUrl" type="string | null">Logo.</ResponseField>
+    <ResponseField name="metadata" type="object">Extra location data, `{}` when none.</ResponseField>
+    <ResponseField name="parent" type="object | null">`id`, `locationCode`, `companyName`, `fullName`, `displayName` of the parent dealer.</ResponseField>
+    <ResponseField name="stats" type="object">`activeListings`, `totalListings`, `avgActivePrevMonth` (number or `null`).</ResponseField>
+    <ResponseField name="updatedAt" type="string | null">ISO 8601.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="meta" type="object">
+  `total` (number of locations), `profileIds` (their UUIDs), `rootProfileIds` (the dealers linked to your key), `filters` (`parentId`, `search`) and `partner` (`id`, `name`, `access`).
+</ResponseField>
+
+<RequestExample>
+```bash cURL
+curl "https://www.okasie.be/api/external/v1/locations" \
+  -H "Authorization: Bearer YOUR_API_SECRET"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "data": [
+    {
+      "id": "7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f",
+      "parentId": null,
+      "isRoot": true,
+      "locationCode": "OK-00148",
+      "companyName": "Example Cars BV",
+      "fullName": null,
+      "displayName": "Example Cars BV",
+      "email": "sales@example.com",
+      "phone": "+32 9 000 00 00",
+      "address": "Voorbeeldstraat 1",
+      "postalCode": "9000",
+      "city": "Gent",
+      "province": "Oost-Vlaanderen",
+      "logoUrl": null,
+      "metadata": {},
+      "parent": null,
+      "stats": {"activeListings": 42, "totalListings": 57, "avgActivePrevMonth": 40},
+      "updatedAt": "2026-10-20T08:00:00.000Z"
+    }
+  ],
+  "meta": {
+    "total": 1,
+    "profileIds": ["7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f"],
+    "rootProfileIds": ["7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f"],
+    "filters": {"parentId": null, "search": null},
+    "partner": {
+      "id": "your-partner-name",
+      "name": "your-partner-name",
+      "access": {
+        "scope": "restricted",
+        "rootProfileIds": ["7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f"],
+        "profileIds": ["7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f"]
+      }
+    }
+  }
+}
+```
+</ResponseExample>
+
+A key that reaches no dealer yet gets `200` with an empty `data` array.
+
+## Errors
+
+| Status | Body | When |
+|--------|------|------|
+| 401 | `{"error": "Unauthorized"}` | Missing or unknown API key |
+| 500 | `{"error": "Failed to load locations"}` | Okasie could not read the locations; retry later |

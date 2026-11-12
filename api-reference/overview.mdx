@@ -1,0 +1,62 @@
+---
+title: API Reference Overview
+description: "All endpoints of the Okasie Partner API"
+---
+
+# API Reference
+
+## Base URL
+
+```
+https://www.okasie.be/api/external/v1
+```
+
+All requests and responses use JSON (`Content-Type: application/json`) in UTF-8.
+
+## Authentication
+
+Send your secret as `Authorization: Bearer YOUR_API_SECRET` or `X-API-Key: YOUR_API_SECRET`. See [Authentication](/authentication) for scopes and for which dealers your key can reach.
+
+## Endpoints
+
+### Listings
+
+| Method | Endpoint | Scope | Description |
+|--------|----------|-------|-------------|
+| `GET` | `/listings` | any key | [List listings](/api-reference/listings/list) |
+| `PUT` | `/listings/{externalReference}` | `write:listings` | [Create or replace a listing](/api-reference/listings/upsert) |
+| `POST` | `/listings/bulk-upsert` | `write:listings` | [Create or replace up to 100 listings](/api-reference/listings/bulk-upsert) |
+| `DELETE` | `/listings/{externalReference}` | `write:listings` | [Take a listing offline (sold or withdrawn)](/api-reference/listings/delete) |
+| `POST` | `/listings/{externalReference}/status` | `write:listings` | [Change only the status](/api-reference/listings/status) |
+
+### Locations
+
+| Method | Endpoint | Scope | Description |
+|--------|----------|-------|-------------|
+| `GET` | `/locations` | any key | [Dealers your key can reach](/api-reference/locations/list) |
+| `GET` | `/locations/{id}/listings` | any key | [Listings of one dealer](/api-reference/locations/listings) |
+
+### Brands
+
+| Method | Endpoint | Scope | Description |
+|--------|----------|-------|-------------|
+| `GET` | `/brands` | none (public) | [Makes and models to map to](/api-reference/brands/list) |
+
+## Responses
+
+- Success is always HTTP `200`, also when a listing is created. The payload is in `data`.
+- Write endpoints return errors as `{"error": {"code", "message"}}`; read endpoints as `{"error": "<message>"}`. See [Error Handling](/errors).
+- `GET /listings` and the write endpoints return [rate limit headers](/rate-limiting).
+
+## OpenAPI specification
+
+The [OpenAPI specification](/openapi.yaml) describes the same endpoints and can be imported into Postman or Insomnia or used to generate a client.
+
+<CardGroup cols={2}>
+  <Card title="Listings API" icon="car" href="/api-reference/listings/upsert">
+    Send vehicle listings
+  </Card>
+  <Card title="Locations API" icon="location-dot" href="/api-reference/locations/list">
+    Check which dealers you can reach
+  </Card>
+</CardGroup>

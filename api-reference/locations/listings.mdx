@@ -1,0 +1,92 @@
+---
+title: Get Location Listings
+api: GET /api/external/v1/locations/{id}/listings
+description: "The listings of one dealer location"
+---
+
+Returns the listings of one dealer (and optionally its child locations). The listing objects, pagination and filters are the same as [List Listings](/api-reference/listings/list).
+
+Any valid API key can call this endpoint. It is not rate limited and returns no rate limit headers.
+
+## Path parameter
+
+<ParamField path="id" type="string" required>
+  The dealer's profile UUID (`id` in [List Locations](/api-reference/locations/list)). It must be a UUID: another value, such as a Dealer ID, is ignored and the listings of every dealer you can reach are returned. To filter on a Dealer ID use `GET /listings?locationCode=OK-00148`.
+</ParamField>
+
+## Query parameters
+
+<ParamField query="includeChildren" type="boolean" default="false">
+  Also return the listings of the dealer's child locations. Accepts `true`/`false`, `1`/`0`, `yes`/`no`.
+</ParamField>
+
+<ParamField query="page" type="integer" default="1">
+  Page number, starting at 1. Also accepted as `page_number`.
+</ParamField>
+
+<ParamField query="pageSize" type="integer" default="50">
+  Items per page, 1 to 200. Also accepted as `page_size` and `limit`.
+</ParamField>
+
+<ParamField query="status" type="string" default="active">
+  `active`, `pending`, `sold`, `draft` or `all`. Other values fall back to `active`.
+</ParamField>
+
+<ParamField query="updatedSince" type="string">
+  ISO 8601 date-time. Also accepted as `updated_since`.
+</ParamField>
+
+<ParamField query="locationCode" type="string">
+  Narrow further to the dealer with this Dealer ID. Also accepted as `location_code`.
+</ParamField>
+
+A dealer outside your access gives `200` with an empty list, not `404`.
+
+## Response
+
+`data` and `pagination` as in [List Listings](/api-reference/listings/list). `meta` holds `locationId`, `includeChildren`, `filters` (`status`, `updatedSince`, `locationCode`), `partner` (`id`, `name`, `access`) and `profileScope`.
+
+<RequestExample>
+```bash cURL
+curl "https://www.okasie.be/api/external/v1/locations/7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f/listings?status=all" \
+  -H "Authorization: Bearer YOUR_API_SECRET"
+```
+</RequestExample>
+
+<ResponseExample>
+```json 200
+{
+  "data": [
+    {
+      "id": "0c52cae7-bcaa-4b37-be0d-1b78c92c5225",
+      "externalReference": "DV-123456",
+      "title": "Volkswagen Golf 1.5 TSI Life",
+      "status": "active",
+      "price": 21950,
+      "dealer": {
+        "id": "7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f",
+        "locationCode": "OK-00148",
+        "displayName": "Example Cars BV"
+      }
+    }
+  ],
+  "pagination": {"page": 1, "pageSize": 50, "totalItems": 1, "totalPages": 1},
+  "meta": {
+    "locationId": "7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f",
+    "includeChildren": false,
+    "filters": {"status": "all", "updatedSince": null, "locationCode": null},
+    "partner": {"id": "your-partner-name", "name": "your-partner-name", "access": {"scope": "restricted", "rootProfileIds": ["7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f"], "profileIds": ["7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f"]}},
+    "profileScope": {"allowed": ["7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f"], "effective": ["7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f"], "filters": {"dealerId": "7f7f7f7f-7f7f-407f-a7f7-7f7f7f7f7f7f", "parentId": null, "locationCode": null}}
+  }
+}
+```
+</ResponseExample>
+
+The listing objects above are shortened; the full object is shown on [List Listings](/api-reference/listings/list).
+
+## Errors
+
+| Status | Body | When |
+|--------|------|------|
+| 401 | `{"error": "Unauthorized"}` | Missing or unknown API key |
+| 500 | `{"error": "Failed to load listings for location"}` | Okasie could not read the listings; retry later |

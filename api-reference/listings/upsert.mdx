@@ -1,0 +1,541 @@
+---
+title: Create/Update Listing
+api: PUT /api/external/v1/listings/{externalReference}
+description: "Create or replace a vehicle listing by your own reference"
+---
+
+# Create or Update Listing
+
+Creates the listing when your reference is new for your API key, and replaces it when it already exists. The same call is used for every change: price, photos, status, anything.
+
+<Note>
+  Requires the `write:listings` scope and a dealer that is linked to your key (see [Dealer access](/authentication#dealer-access)).
+</Note>
+
+<Warning>
+  **PUT is a full replacement.**
+  Every field you leave out is cleared (stored as empty), except `images` and `features`: leave those out to keep what Okasie has, send `[]` to remove them all. Always send the complete car.
+</Warning>
+
+## How values are read
+
+These rules apply to every field below.
+
+- **Unknown fields are ignored.** A field that is not listed on this page is dropped without an error.
+- **Numbers** may be sent as a JSON number or as a numeric string (`19995`, `"19995"`, `"19995.50"`). Use a dot as decimal separator and no thousands separator. Whole-number fields (marked *integer*) refuse decimals with `422`.
+- **0 means "not known"** for `mileage`, `powerKw`, `co2Emission`, `fuelConsumption`, `weight`, `previousOwners` and `warrantyMonths`: Okasie stores it as empty.
+- **Booleans** (`serviceHistory`, `warranty`) must be JSON `true` or `false`. The string `"true"` is refused with `422`.
+- **`null`**: only the fields marked *nullable* accept `null`. For any other text field `null` is refused with `422`; for `year`, `doors` and `seats` it is refused as well. When you have no value, leave the field out.
+- **Text** is trimmed. A text that is empty after trimming is stored as empty.
+- Errors are described on [Error Handling](/errors); the codes this endpoint can return are listed [below](#errors).
+
+## Path parameter
+
+<ParamField path="externalReference" type="string" required>
+  Your own identifier for this car, for example the advertisement id in your system. It is unique per API key: the same reference always addresses the same Okasie listing. Leading and trailing spaces are removed. There is no fixed maximum length; keep it under 64 characters and URL-encode characters such as `/`, `?` and `#`. On a key limited to dealers Okasie approved, a reference that was used for one dealer can never be used for another dealer (`409 REFERENCE_OWNED_BY_OTHER_DEALER`), also not after the listing was deleted. On other keys, sending the same reference with another dealer moves the listing to that dealer.
+</ParamField>
+
+## Dealer
+
+Send one of the two. When both are sent, `dealerProfileId` is used.
+
+<ParamField body="dealerLocationCode" type="string">
+  The dealer's Okasie Dealer ID, for example `OK-00148` (max 120 characters, case-insensitive). The dealer finds it in the Okasie dashboard under **Integraties**. Required when `dealerProfileId` is not sent. The dealer must be linked to your API key, else `403 PROFILE_FORBIDDEN`. An unknown Dealer ID gives `400 INVALID_PROFILE`.
+</ParamField>
+
+<ParamField body="dealerProfileId" type="string">
+  The dealer's profile UUID (max 120 characters), as returned in `dealer.id` by [List Listings](/api-reference/listings/list) or `id` by [List Locations](/api-reference/locations/list). Required when `dealerLocationCode` is not sent. A value that is not a UUID is looked up as a Dealer ID.
+</ParamField>
+
+## Status and price
+
+<ParamField body="status" type="string" default="draft">
+  One of `active`, `pending`, `sold`, `draft` (case-insensitive). Any other value gives `422`.
+  - `active`: published on okasie.be. Counts towards the dealer's plan; refused with `409 LISTING_LIMIT_REACHED` or `409 DEALER_PLAN_REQUIRED` when the plan does not allow it.
+  - `pending`: saved, not shown on the site.
+  - `draft`: saved, not shown on the site.
+  - `sold`: marked as sold and taken offline about an hour later (60 to 75 minutes) (its status then becomes `inactive`). Same effect as [Delete Listing](/api-reference/listings/delete).
+</ParamField>
+
+<ParamField body="price" type="number">
+  Asking price in euro, `0` or more, decimals allowed. **Required and greater than 0 when `status` is `active` or `pending`** (`400 INVALID_PRICE`). A negative price gives `422`.
+</ParamField>
+
+<ParamField body="currency" type="string" default="EUR">
+  Exactly 3 characters, stored in upper case. Okasie shows every price in euro and the read endpoints always return `EUR`, so send `EUR` or leave it out.
+</ParamField>
+
+## Title and description
+
+<ParamField body="title" type="string" required>
+  The heading of the listing, also used in its public URL. Must contain at least one non-space character: a missing or empty string gives `422`, a string of spaces gives `400 INVALID_TITLE`. No maximum is enforced; around 100 characters reads best.
+</ParamField>
+
+<ParamField body="description" type="string">
+  *Nullable.* Max 15,000 characters. Plain text; use `\n` for line breaks. HTML is not rendered.
+</ParamField>
+
+## Location
+
+`postalCode` and `city` are **required for every status, also `draft` and `sold`** (`400 INVALID_LOCATION`). `province` is required too, unless Okasie can derive it (see below). You may send these fields at the top level or inside `location`.
+
+<ParamField body="postalCode" type="string">
+  Max 32 characters. Where the car stands. For a 4-digit Belgian postal code Okasie derives `province` itself and ignores the `province` you send.
+</ParamField>
+
+<ParamField body="city" type="string">
+  Max 120 characters.
+</ParamField>
+
+<ParamField body="province" type="string">
+  Max 120 characters. Only needed when `postalCode` is not a 4-digit Belgian code. Derived values: `Brussel`, `Antwerpen`, `Limburg`, `Oost-Vlaanderen`, `West-Vlaanderen`, `Vlaams-Brabant`, `Waals-Brabant`, `Henegouwen`, `Luik`, `Luxemburg`, `Namen`.
+</ParamField>
+
+<ParamField body="latitude" type="number">
+  Optional coordinate in decimal degrees. Not range-checked.
+</ParamField>
+
+<ParamField body="longitude" type="number">
+  Optional coordinate in decimal degrees. Not range-checked.
+</ParamField>
+
+<ParamField body="location" type="object">
+  Alternative place for the fields above. A non-empty value inside `location` wins over the top-level field.
+
+  <Expandable title="properties">
+    <ParamField body="postalCode" type="string">*Nullable.* Max 32 characters.</ParamField>
+    <ParamField body="city" type="string">*Nullable.* Max 120 characters.</ParamField>
+    <ParamField body="province" type="string">*Nullable.* Max 120 characters.</ParamField>
+    <ParamField body="latitude" type="number">Decimal degrees.</ParamField>
+    <ParamField body="longitude" type="number">Decimal degrees.</ParamField>
+  </Expandable>
+</ParamField>
+
+## Vehicle
+
+<ParamField body="brand" type="string">
+  Max 120 characters. Make, for example `Volkswagen`. A make from [List Makes and Models](/api-reference/brands/list), or a known variant of it, is stored with Okasie's name (`VW` becomes `Volkswagen`); any other make is stored as sent.
+</ParamField>
+
+<ParamField body="model" type="string">
+  Max 120 characters. A model from [List Makes and Models](/api-reference/brands/list) for that make is stored with Okasie's spelling (`XC 40` becomes `XC40`); any other model is stored as sent.
+</ParamField>
+
+<ParamField body="variant" type="string">
+  *Nullable.* Max 120 characters. Version or trim, for example `GTI Clubsport`. Returned as `variant` by the read endpoints.
+</ParamField>
+
+<ParamField body="customType" type="string">
+  Max 60 characters. Same field as `variant`; when both are sent, `customType` wins.
+</ParamField>
+
+<ParamField body="year" type="integer">
+  Model year, from 1900 up to next year. Outside that range, `0` and `null` give `422`.
+</ParamField>
+
+<ParamField body="firstRegistration" type="string">
+  Max 10 characters. Date of first registration. Not validated and stored as sent; use `YYYY-MM-DD` (or `YYYY-MM`) so the site can sort and filter on it.
+</ParamField>
+
+<ParamField body="mileage" type="integer">
+  Odometer reading in km, `0` or more. `0` is stored as empty.
+</ParamField>
+
+<ParamField body="fuelType" type="string">
+  Max 60 characters. Free text, mapped to an Okasie label: see [Fuel type values](#fuel-type-values).
+</ParamField>
+
+<ParamField body="transmission" type="string">
+  Max 60 characters. Free text, mapped to an Okasie label: see [Transmission values](#transmission-values).
+</ParamField>
+
+<ParamField body="bodyType" type="string">
+  Max 60 characters. Free text, mapped to an Okasie label: see [Body type values](#body-type-values).
+</ParamField>
+
+<ParamField body="engine" type="string">
+  Max 60 characters. Engine displacement in litres, for example `1.6`. The site shows it followed by "L", so send the number only.
+</ParamField>
+
+<ParamField body="powerKw" type="number">
+  Engine power in kW, `0` or more. Okasie stores metric horsepower (kW x 1.35962, rounded); the read endpoints convert it back to whole kW, so `110.3` reads back as `110`.
+</ParamField>
+
+<ParamField body="driveType" type="string">
+  *Nullable.* Max 60 characters. Free text shown as sent, for example `FWD`, `RWD`, `AWD`, `4x4`.
+</ParamField>
+
+<ParamField body="gears" type="integer">
+  *Nullable.* Number of gears, 1 to 12.
+</ParamField>
+
+<ParamField body="doors" type="integer">
+  Number of doors, 1 to 10. `0` and `null` give `422`; leave it out when unknown.
+</ParamField>
+
+<ParamField body="seats" type="integer">
+  Number of seats, 1 to 10. `0` and `null` give `422`; leave it out when unknown.
+</ParamField>
+
+<ParamField body="weight" type="integer">
+  *Nullable.* Weight in kg, `0` or more.
+</ParamField>
+
+<ParamField body="color" type="string">
+  Max 60 characters. Exterior colour, free text, for example `Grijs`.
+</ParamField>
+
+<ParamField body="paintType" type="string">
+  *Nullable.* Max 60 characters. Free text, for example `Metallic`, `Parelmoer`, `Mat`, `Uni`.
+</ParamField>
+
+<ParamField body="interiorColor" type="string">
+  *Nullable.* Max 60 characters. Free text.
+</ParamField>
+
+<ParamField body="interiorMaterial" type="string">
+  *Nullable.* Max 60 characters. Free text, for example `Leder`, `Stof`, `Alcantara`, `Kunstleder`.
+</ParamField>
+
+<ParamField body="vin" type="string">
+  Max 32 characters. Chassis number. The format is not checked.
+</ParamField>
+
+## Environment
+
+<ParamField body="co2Emission" type="integer">
+  CO2 emission in g/km, `0` or more.
+</ParamField>
+
+<ParamField body="co2Type" type="string">
+  *Nullable.* Max 30 characters. Test cycle of the CO2 value, free text, for example `WLTP` or `NEDC`.
+</ParamField>
+
+<ParamField body="emissionClass" type="string">
+  Max 30 characters. Euro norm, free text, for example `Euro 6d`. The site's emission filter matches on part of this text.
+</ParamField>
+
+<ParamField body="fuelConsumption" type="number">
+  *Nullable.* Combined consumption in l/100 km, `0` or more, decimals allowed.
+</ParamField>
+
+## History, warranty and sale
+
+<ParamField body="previousOwners" type="integer">
+  *Nullable.* Number of previous owners, `0` or more. `0` is stored as empty.
+</ParamField>
+
+<ParamField body="serviceHistory" type="boolean">
+  *Nullable.* `true` when a maintenance history is available. Leave it out when unknown: `null` is stored as `false`.
+</ParamField>
+
+<ParamField body="warranty" type="boolean">
+  *Nullable.* `true` when the car is sold with warranty. Leave it out when unknown: `null` is stored as `false`.
+</ParamField>
+
+<ParamField body="warrantyMonths" type="integer">
+  *Nullable.* Warranty duration in months, `0` or more.
+</ParamField>
+
+<ParamField body="vehicleType" type="string" default="margin">
+  Max 60 characters. VAT regime: `margin` (margin scheme, the default) or `vat` (VAT deductible; `btw` is also treated as VAT deductible). Other values are stored as sent.
+</ParamField>
+
+<ParamField body="conditionTags" type="string[]">
+  Up to 6 tags of max 32 characters each, shown on the listing and used by the site's condition filter. Free text. More than 6 tags or a longer tag gives `422`; empty tags are dropped.
+</ParamField>
+
+<ParamField body="condition" type="string">
+  *Nullable.* Max 60 characters. Free text, for example `Gebruikt`. Stored as a single condition tag, and only when `conditionTags` is not sent.
+</ParamField>
+
+<ParamField body="carPassUrl" type="string">
+  *Nullable.* Car-Pass of the car. Accepted: a URL on `public.car-pass.be` or `car-pass.be` (stored as sent), or a certificate number with exactly 11 digits (spaces and dashes are removed). Anything else gives `422`. The same value is also accepted under the names `carPass`, `car_pass_url` and `carPassNumber`; send only one of them. Read back as `carPassUrl`.
+</ParamField>
+
+## Features
+
+<ParamField body="features" type="object[]">
+  Equipment of the car. Leave it out to keep the current features; `[]` removes them all; otherwise the list replaces the current set. Items without a name are dropped, duplicates (same category and name, case-insensitive) are kept once, and only the first 50 are stored, without a warning.
+
+  <Expandable title="item properties">
+    <ParamField body="name" type="string">
+      *Nullable.* Max 120 characters. The feature as shown on the listing, for example `Navigatiesysteem`. `feature` is accepted as another name for this field.
+    </ParamField>
+    <ParamField body="category" type="string" default="other">
+      *Nullable.* Max 32 characters (longer gives `422`). Free text, for example `comfort`, `safety`, `interior`, `exterior`, `technology`.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Images
+
+<ParamField body="images" type="array">
+  Photos of the car, as URL strings or objects. Leave it out to keep the current photos; `[]` removes them all; otherwise the list replaces the current set, in the order of `position`. Empty entries are dropped and only the first 50 are used, without a warning. See [Image Handling](/guides/image-handling) for the download rules.
+
+  <Expandable title="object properties">
+    <ParamField body="url" type="string">
+      *Nullable.* Public HTTPS URL of the photo, max 2048 characters. `imageUrl` is accepted as another name for this field.
+    </ParamField>
+    <ParamField body="position" type="integer">
+      Sort order, `0` or more; the lowest position is the main photo. Defaults to the index in the array.
+    </ParamField>
+  </Expandable>
+
+  A photo Okasie cannot download is skipped and listed in `warnings.skippedImages`; the listing itself is still saved.
+</ParamField>
+
+## Response
+
+Every successful call returns **HTTP 200**, for a new listing as well as for an update.
+
+<ResponseField name="data.listingId" type="string">
+  Okasie listing UUID.
+</ResponseField>
+
+<ResponseField name="data.externalReference" type="string">
+  Your reference, trimmed.
+</ResponseField>
+
+<ResponseField name="data.status" type="string">
+  The stored status: `active`, `pending`, `sold` or `draft`.
+</ResponseField>
+
+<ResponseField name="data.listingUrl" type="string | null">
+  The public page on okasie.be, for example `https://www.okasie.be/aanbod/volkswagen-golf-1-5-tsi--0c52cae7-bcaa-4b37-be0d-1b78c92c5225`. Only set when `status` is `active`; `null` otherwise. The path changes with the title.
+</ResponseField>
+
+<ResponseField name="data.created" type="boolean">
+  `true` when this call created the listing, `false` when it replaced an existing one.
+</ResponseField>
+
+<ResponseField name="data.warnings" type="object">
+  Only present when photos were skipped.
+
+  <Expandable title="properties">
+    <ResponseField name="skippedImages" type="object[]">
+      One entry per skipped photo: `source` (the URL you sent, or `null`) and `reason`. `reason` is `invalid-url` (not an http or https URL), `mirror_failed`, or a short description in Dutch, such as `Afbeelding ophalen mislukt (404)` or `Afbeeldings-URL is niet toegestaan`.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+The response carries the [rate limit headers](/rate-limiting).
+
+<RequestExample>
+```bash Minimal
+curl -X PUT "https://www.okasie.be/api/external/v1/listings/DV-123456" \
+  -H "Authorization: Bearer YOUR_API_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dealerLocationCode": "OK-00148",
+    "status": "active",
+    "title": "Volkswagen Golf 1.5 TSI Life",
+    "price": 21950,
+    "postalCode": "9000",
+    "city": "Gent"
+  }'
+```
+
+```bash Full
+curl -X PUT "https://www.okasie.be/api/external/v1/listings/DV-123456" \
+  -H "Authorization: Bearer YOUR_API_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dealerLocationCode": "OK-00148",
+    "status": "active",
+    "title": "Volkswagen Golf 1.5 TSI Life",
+    "description": "First owner, full dealer maintenance.\nNew tyres in 2026.",
+    "price": 21950,
+    "currency": "EUR",
+    "brand": "Volkswagen",
+    "model": "Golf",
+    "variant": "Life",
+    "year": 2022,
+    "firstRegistration": "2022-03-15",
+    "mileage": 38500,
+    "fuelType": "Benzine",
+    "transmission": "Automatic",
+    "bodyType": "Hatchback",
+    "engine": "1.5",
+    "powerKw": 110,
+    "driveType": "FWD",
+    "gears": 7,
+    "doors": 5,
+    "seats": 5,
+    "weight": 1310,
+    "color": "Grijs",
+    "paintType": "Metallic",
+    "interiorColor": "Zwart",
+    "interiorMaterial": "Stof",
+    "vin": "WVWZZZCDZNW000000",
+    "co2Emission": 129,
+    "co2Type": "WLTP",
+    "emissionClass": "Euro 6d",
+    "fuelConsumption": 5.7,
+    "previousOwners": 1,
+    "serviceHistory": true,
+    "warranty": true,
+    "warrantyMonths": 12,
+    "vehicleType": "margin",
+    "conditionTags": ["Gebruikt"],
+    "carPassUrl": "https://public.car-pass.be/vhr/00000000-0000-0000-0000-000000000000",
+    "postalCode": "9000",
+    "city": "Gent",
+    "latitude": 51.0543,
+    "longitude": 3.7174,
+    "features": [
+      {"category": "comfort", "name": "Automatische airco"},
+      {"category": "technology", "name": "Apple CarPlay"},
+      {"category": "safety", "name": "Parkeersensoren"}
+    ],
+    "images": [
+      {"url": "https://images.example.com/dv/123456/1.jpg", "position": 0},
+      {"url": "https://images.example.com/dv/123456/2.jpg", "position": 1},
+      "https://images.example.com/dv/123456/3.jpg"
+    ]
+  }'
+```
+</RequestExample>
+
+<ResponseExample>
+```json Created (200)
+{
+  "data": {
+    "listingId": "0c52cae7-bcaa-4b37-be0d-1b78c92c5225",
+    "externalReference": "DV-123456",
+    "status": "active",
+    "listingUrl": "https://www.okasie.be/aanbod/volkswagen-golf-1-5-tsi-life--0c52cae7-bcaa-4b37-be0d-1b78c92c5225",
+    "created": true
+  }
+}
+```
+
+```json Updated, photo skipped (200)
+{
+  "data": {
+    "listingId": "0c52cae7-bcaa-4b37-be0d-1b78c92c5225",
+    "externalReference": "DV-123456",
+    "status": "active",
+    "listingUrl": "https://www.okasie.be/aanbod/volkswagen-golf-1-5-tsi-life--0c52cae7-bcaa-4b37-be0d-1b78c92c5225",
+    "created": false,
+    "warnings": {
+      "skippedImages": [
+        {"source": "https://images.example.com/dv/123456/3.jpg", "reason": "Afbeelding ophalen mislukt (404)"}
+      ]
+    }
+  }
+}
+```
+
+```json Draft (200)
+{
+  "data": {
+    "listingId": "0c52cae7-bcaa-4b37-be0d-1b78c92c5225",
+    "externalReference": "DV-123456",
+    "status": "draft",
+    "listingUrl": null,
+    "created": false
+  }
+}
+```
+
+```json 422 Validation failed
+{
+  "error": {
+    "code": "VALIDATION_FAILED",
+    "message": "Payload validation failed",
+    "issues": [
+      {"path": "doors", "message": "Number must be greater than or equal to 1", "code": "too_small"},
+      {"path": "carPassUrl", "message": "carPassUrl must be a public car-pass.be URL or an 11-digit certificate number", "code": "custom"}
+    ]
+  }
+}
+```
+
+```json 400 Missing location
+{
+  "error": {
+    "code": "INVALID_LOCATION",
+    "message": "province, city en postalCode zijn verplicht voor een listing"
+  }
+}
+```
+
+```json 409 Plan limit
+{
+  "error": {
+    "code": "LISTING_LIMIT_REACHED",
+    "message": "The dealer has reached the number of active listings of its Okasie plan; this listing was not published."
+  }
+}
+```
+</ResponseExample>
+
+## Errors
+
+Errors use the body `{"error": {"code", "message"}}`. The checks run in this order, and the first one that fails is returned.
+
+| Status | Code | When |
+|--------|------|------|
+| 401 | `UNAUTHORIZED` | Missing or unknown API key, or the key lacks `write:listings` |
+| 429 | `RATE_LIMITED` | Rate limit reached; the body has `retryAt` |
+| 400 | `INVALID_REFERENCE` | The path reference is empty |
+| 400 | `INVALID_JSON` | The body is not valid JSON |
+| 400 | `INVALID_BODY` | The body is not a JSON object |
+| 422 | `VALIDATION_FAILED` | A field breaks a rule on this page, `title` is missing or empty, or both `dealerProfileId` and `dealerLocationCode` are missing; see `issues` |
+| 400 | `INVALID_TITLE` | `title` only contains spaces |
+| 400 | `INVALID_PRICE` | `status` is `active` or `pending` and `price` is missing or 0 |
+| 400 | `INVALID_PROFILE` | No dealer found for `dealerProfileId` / `dealerLocationCode` |
+| 403 | `PROFILE_FORBIDDEN` | The dealer is not linked to your key |
+| 400 | `INVALID_LOCATION` | `postalCode` or `city` is missing, or `province` is missing for a postal code that is not a 4-digit Belgian code |
+| 409 | `REFERENCE_OWNED_BY_OTHER_DEALER` | Keys limited to approved dealers only: this reference is already used by your key for a listing of another dealer |
+| 409 | `LISTING_LIMIT_REACHED` | The resulting status is `active` and the dealer's plan has no free place. Nothing was saved |
+| 409 | `DEALER_PLAN_REQUIRED` | The resulting status is `active` and the dealer has no active plan. Nothing was saved |
+| 500 | `FETCH_FAILED` / `UPSERT_FAILED` | Okasie could not read or save the listing. Nothing was saved; retry later |
+| 500 | `FEATURES_FAILED` / `IMAGES_FAILED` | The listing itself was saved, but its features or photos were not. Retry the same call |
+
+A refused write leaves the listing as it was before the call (except after `FEATURES_FAILED` and `IMAGES_FAILED`), so it is always safe to send the same PUT again.
+
+## Value mapping
+
+`fuelType`, `transmission` and `bodyType` accept free text. Okasie compares your value without case, accents, spaces or punctuation (so `Semi-automatic`, `semi automatic` and `SEMIAUTOMATIC` are the same) against the inputs below and stores the Okasie label. A value that matches nothing is stored as sent, but then does not appear under the site's search filters, so map your values to one of these inputs.
+
+### Fuel type values
+
+| Stored label | Accepted inputs |
+|---|---|
+| `Benzine` | `Benzine`, `benzin`, `gasoline`, `petrol` |
+| `Diesel` | `Diesel` |
+| `Hybride (Benzine)` | `Hybride (Benzine)`, `hybride`, `hybrid`, `hybride benzine`, `hybrid benzine`, `hybrid petrol`, `hybrid gasoline`, `hybride essence`, `hybrid essence`, `mild hybrid`, `mild hybrid benzine`, `full hybrid`, `full hybrid benzine` |
+| `Hybride (Diesel)` | `Hybride (Diesel)`, `hybride diesel`, `hybrid diesel`, `mild hybrid diesel`, `full hybrid diesel` |
+| `Plug-in Hybride (Benzine)` | `Plug-in Hybride (Benzine)`, `plug-in hybrid benzine`, `plug-in hybrid petrol`, `plug-in hybrid gasoline`, `hybride rechargeable essence`, `hybride rechargeable benzine`, `hybride rechargeable petrol`, `PHEV benzine`, `PHEV essence`, `PHEV petrol`, `PHEV gasoline`, `plug-in hybride opladen benzine` |
+| `Plug-in Hybride (Diesel)` | `Plug-in Hybride (Diesel)`, `plug-in hybrid diesel`, `hybride rechargeable diesel`, `PHEV diesel`, `plug-in hybride oplad diesel`, `rechargeable hybrid diesel` |
+| `Elektrisch` | `Elektrisch`, `electric`, `EV` |
+| `LPG` | `LPG`, `autogas` |
+| `Anders` | `Anders`, `other`, `overig` |
+
+`PHEV` on its own, `CNG`, `hydrogen` and `waterstof` are not mapped.
+
+### Transmission values
+
+| Stored label | Accepted inputs |
+|---|---|
+| `Manueel` | `Manueel`, `manual`, `handgeschakeld`, `handshift` |
+| `Automaat` | `Automaat`, `automatic`, `automatisch` |
+| `Halfautomaat` | `Halfautomaat`, `semi-automaat`, `semi-automatic` |
+
+### Body type values
+
+| Stored label | Accepted inputs |
+|---|---|
+| `Stadswagen` | `Stadswagen`, `citycar`, `citadine`, `anders`, `other`, `overig` |
+| `Hatchback` | `Hatchback`, `compact`, `compacte` |
+| `SUV & Pick-up` | `SUV & Pick-up`, `SUV`, `sport utility vehicle`, `pickup`, `pick-up`, `pickup truck`, `SUV pickup`, `SUV and pickup`, `offroader` |
+| `Bestelwagen` | `Bestelwagen`, `van`, `bestelbreak`, `bedrijfswagen`, `utilitaire`, `fourgon tole` |
+| `Cabriolet` | `Cabriolet`, `cabrio`, `convertible`, `roadster` |
+| `Monovolume` | `Monovolume`, `MPV`, `minivan`, `people carrier` |
+| `Berline` | `Berline`, `sedan`, `saloon` |
+| `Break` | `Break`, `estate`, `station wagon`, `stationwagen`, `wagon`, `combi`, `kombi`, `touring` |
+| `Coupé` | `Coupé`, `coupe`, `sport coupe` |
+
+Note that `other`, `anders` and `overig` become `Stadswagen` (city car). Leave `bodyType` out when the body type is unknown.
